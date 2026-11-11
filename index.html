@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Among Monstros</title>
+<style>
+:root{--bg:#ece8f2;--fg:#15131a;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0d0b12;--fg:#f2eef8}}
+:root[data-theme="dark"]{--bg:#0d0b12;--fg:#f2eef8}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font-family:system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;padding:10px}
+h1{font-size:18px;margin:6px 0}
+#w{position:relative;width:100%;max-width:800px}
+canvas{width:100%;display:block;border-radius:10px;background:#1a1822}
+#ov{position:absolute;inset:0;background:rgba(10,8,16,.93);border-radius:10px;color:#f2eef8;padding:18px;overflow:auto;box-sizing:border-box;text-align:center}
+#ov h2{margin:4px 0 8px;color:#ffd84d}
+button{background:#2a2536;color:#f2eef8;border:2px solid #f2eef8;border-radius:6px;padding:8px 14px;margin:4px;font-size:14px;cursor:pointer}
+button:hover{background:#e8383d}
+.l{background:#1d1a26;border-radius:6px;padding:6px 10px;margin:4px auto;max-width:560px;text-align:left;font-size:13px}
+small{opacity:.75}
+input{background:#2a2536;color:#f2eef8;border:1px solid #f2eef8;border-radius:6px;padding:8px;margin:4px;width:230px;font-size:14px}
+select{background:#2a2536;color:#f2eef8;border:1px solid #f2eef8;border-radius:4px;padding:3px;margin:2px;font-size:13px}
+</style></head><body>
+<h1>Among Monstros</h1>
+<div id="w"><canvas id="c" width="800" height="500"></canvas><div id="ov"></div></div>
+<small>WASD/setas: mover · E (segure): tarefa · R: reportar · F: investigar (detetive) · Espaço: eliminar (assassino)</small>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+const C=document.getElementById('c'),g=C.getContext('2d'),ov=document.getElementById('ov');
+const WW=1600,WH=1000;let CX=0,CY=0;
+const R=[['Ruínas',0,0,500,380,'#3b2a4d'],['Neve',550,0,500,380,'#2b4660'],['Cachoeira',1100,0,500,380,'#1e4a52'],['Magma',0,620,500,380,'#5e3020'],['Núcleo',550,620,500,380,'#3a3a4a'],['Castelo',1100,620,500,380,'#454048']];
+const ST=R.flatMap(r=>[[r[1]+130,r[2]+120],[r[1]+370,r[2]+260]]);
+const WL=[];R.forEach(r=>{const x=r[1],y=r[2],w=r[3],h=r[4],cx=x+w/2,t=12;WL.push([x,y,t,h],[x+w-t,y,t,h]);if(y<500)WL.push([x,y,w,t],[x,y+h-t,cx-60-x,t],[cx+60,y+h-t,x+w-cx-60,t]);else WL.push([x,y+h-t,w,t],[x,y,cx-60-x,t],[cx+60,y,x+w-cx-60,t])});
+WL.push([500,0,50,380],[1050,0,50,380],[500,620,50,380],[1050,620,50,380]);
+const hit=(x,y)=>WL.some(w=>x>w[0]-10&&x<w[0]+w[2]+10&&y>w[1]-10&&y<w[1]+w[3]+10);
+function roomIdx(c){return R.findIndex(r=>c.x>=r[1]&&c.x<r[1]+r[3]&&c.y>=r[2]&&c.y<r[2]+r[4])}
+function mv(c,dx,dy){if(!hit(c.x+dx,c.y))c.x+=dx;if(!hit(c.x,c.y+dy))c.y+=dy;c.x=Math.max(14,Math.min(WW-14,c.x));c.y=Math.max(20,Math.min(WH-14,c.y))}
+function pt(){if(Math.random()<.35)return[40+Math.random()*(WW-80),420+Math.random()*160];const r=rnd(R);return[r[1]+55+Math.random()*(r[3]-110),r[2]+55+Math.random()*(r[4]-110)]}
+function nextWP(c,tx,ty){const a=roomIdx(c),b=roomIdx({x:tx,y:ty}),r=R[a>=0?a:b>=0?b:0],cx=r[1]+r[3]/2,top=r[2]<500,ins=top?r[2]+r[4]-55:r[2]+55,out=top?r[2]+r[4]+35:r[2]-35;
+ if(a<0)for(let k=0;k<6;k++){if(k==b)continue;const q=R[k],qx=q[1]+q[3]/2,qt=q[2]<500,qo=qt?q[2]+q[4]+35:q[2]-35;if(Math.abs(c.x-qx)<80&&(qt?c.y<qo-5:c.y>qo+5))return[qx,qo]}
+ if(a==b){if(a<0)return[tx,ty];const dz=top?c.y>ins+4:c.y<ins-4;return dz&&Math.abs(c.x-cx)<80?[cx,ins]:[tx,ty]}
+ if(a>=0)return Math.abs(c.x-cx)<20?[cx,out]:[cx,ins];
+ return Math.abs(c.x-cx)<20?[cx,ins]:[cx,out]}
+function arrows(){const P=S.ch[0];if(P.role!='d')return;S.bodies.forEach(b=>{const sx=b.x-CX,sy=b.y-CY;if(sx>0&&sx<800&&sy>0&&sy<500)return;const a=Math.atan2(sy-250,sx-400),ex=Math.max(20,Math.min(780,sx)),ey=Math.max(50,Math.min(480,sy));g.save();g.translate(ex,ey);g.rotate(a);g.fillStyle='#ffd84d';g.beginPath();g.moveTo(12,0);g.lineTo(-8,-8);g.lineTo(-8,8);g.fill();g.restore()})}
+const NM=['Você','Gelatina','Chifrinho','Fantasminha','Olhão','Espinho','Bolota','Antenado'];
+const CL=['#7bd88f','#f2a65a','#9ad1f5','#c38cf0','#f0e26a','#f08fb4','#8be0d0','#d9d9d9'];
+const RL={m:'Monstro',k:'Assassino (Alma da Determinação)',d:'Detetive'};
+let S=null;const K={};
+const rnd=a=>a[Math.floor(Math.random()*a.length)];
+const shuf=a=>a.slice().sort(()=>Math.random()-.5);
+const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+function roomOf(c){for(const r of R)if(c.x>=r[1]&&c.x<r[1]+r[3]&&c.y>=r[2]&&c.y<r[2]+r[4])return r[0];return 'Corredor'}
+function near(c,l,d){let b=null,m=d;for(const o of l){if(o===c)continue;const k=dist(c,o);if(k<m){m=k;b=o}}return b}
+function nearB(c,d){return near(c,S.bodies.filter(b=>roomIdx(b)==roomIdx(c)),d)}
+// ===== SUPABASE =====
+const SUPABASE_URL='COLE_SUA_URL_AQUI';
+const SUPABASE_KEY='COLE_SUA_CHAVE_PUBLICA_AQUI';
+let sb=null,USER=null,PROF=null,GUEST=0;
+try{if(window.supabase&&!SUPABASE_URL.startsWith('COLE'))sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY)}catch(e){console.error(e)}
+const esc=t=>String(t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const val=id=>document.getElementById(id).value;
+function tr(m){m=String(m);if(/Invalid login/i.test(m))return 'E-mail ou senha incorretos.';if(/already registered/i.test(m))return 'Este e-mail já está cadastrado.';if(/Email not confirmed/i.test(m))return 'Confirme seu e-mail antes de entrar.';if(/valid email/i.test(m))return 'E-mail inválido.';if(/rate limit/i.test(m))return 'Muitas tentativas. Aguarde um pouco.';return m}
+async function init(){
+ if(sb){try{const{data}=await sb.auth.getSession();USER=data.session?data.session.user:null;if(USER)await loadProf()}catch(e){console.error(e)}}
+ menu()}
+async function loadProf(){
+ let{data}=await sb.from('profiles').select('*').eq('id',USER.id).maybeSingle();
+ if(!data){const u=(USER.user_metadata&&USER.user_metadata.username)||USER.email.split('@')[0];
+  const r=await sb.from('profiles').upsert({id:USER.id,username:u}).select().maybeSingle();data=r.data}
+ PROF=data}
+function authScreen(mode,msg){
+ ov.style.display='block';const up=mode=='up';
+ ov.innerHTML=`<h2>${up?'Criar conta':'Entrar'}</h2>${msg?`<div class="l">${msg}</div>`:''}
+ <p>${up?'<input id="au" placeholder="Nome de jogador" maxlength="16"><br>':''}<input id="ae" type="email" placeholder="E-mail"><br><input id="ap" type="password" placeholder="Senha (mín. 6 caracteres)"></p>
+ <button onclick="${up?'doSignUp()':'doLogin()'}">${up?'Criar conta':'Entrar'}</button><br>
+ <button onclick="authScreen('${up?'in':'up'}')">${up?'Já tenho conta':'Criar uma conta'}</button><button onclick="GUEST=1;menu()">Jogar sem conta</button>`}
+async function doSignUp(){
+ const u=val('au').trim(),e=val('ae').trim(),p=val('ap');
+ if(u.length<3)return authScreen('up','O nome precisa ter pelo menos 3 letras.');
+ if(p.length<6)return authScreen('up','A senha precisa ter pelo menos 6 caracteres.');
+ const{data,error}=await sb.auth.signUp({email:e,password:p,options:{data:{username:u}}});
+ if(error)return authScreen('up',esc(tr(error.message)));
+ if(!data.session)return authScreen('in','Conta criada! Confirme o link enviado ao seu e-mail e depois entre.');
+ USER=data.user;await loadProf();menu()}
+async function doLogin(){
+ const{data,error}=await sb.auth.signInWithPassword({email:val('ae').trim(),password:val('ap')});
+ if(error)return authScreen('in',esc(tr(error.message)));
+ USER=data.user;await loadProf();menu()}
+async function logout(){await sb.auth.signOut();USER=null;PROF=null;GUEST=0;menu()}
+async function saveStats(win){
+ if(!sb||!USER||!PROF||S.saved)return;S.saved=1;PROF.games++;if(win)PROF.wins++;
+ const{error}=await sb.from('profiles').update({games:PROF.games,wins:PROF.wins}).eq('id',USER.id);if(error)console.error(error)}
+async function showRank(){
+ const{data,error}=await sb.from('profiles').select('username,games,wins').order('wins',{ascending:false}).limit(10);
+ ov.innerHTML='<h2>Ranking</h2>'+(error?`<div class="l">${esc(error.message)}</div>`:(data||[]).map((r,i)=>`<div class="l">${i+1}. <b>${esc(r.username)}</b> — ${r.wins} vitórias em ${r.games} partidas</div>`).join(''))+'<p><button onclick="menu()">Voltar</button></p>'}
+function menu(){
+ if(sb&&!USER&&!GUEST)return authScreen('in');
+ ov.style.display='block';
+ const who=USER?`<div class="l">👤 <b>${esc(PROF?PROF.username:USER.email)}</b> · partidas: ${PROF?PROF.games:0} · vitórias: ${PROF?PROF.wins:0}</div>`:'';
+ const extra=USER?`<button onclick="showRank()">Ranking</button><button onclick="logout()">Sair</button>`:(sb?`<button onclick="GUEST=0;authScreen('in')">Entrar / criar conta</button>`:'');
+ ov.innerHTML=`<h2>Among Monstros</h2>${who}<p>Uma nave de monstros, uma alma vermelha cheia de determinação e um detetive de chapéu. Quem é o assassino?</p><p>Escolha seu papel:</p>
+<button onclick="start('m')">Monstro (tripulante)</button><button onclick="start('k')">Assassino ❤ Determinação</button><button onclick="start('d')">Detetive 🤠</button><p>${extra}</p>`}
+function start(role){
+ const ch=NM.map((n,i)=>({n,col:CL[i],t:i,x:400,y:250,alive:1,role:'m',tx:null,ty:null,w:0,p:i==0}));
+ const ai=shuf(ch.slice(1));
+ if(role=='k'){ch[0].role='k';ai[0].role='d'}
+ else if(role=='d'){ch[0].role='d';ai[0].role='k'}
+ else{ai[0].role='k';ai[1].role='d'}
+ S={ch,bodies:[],prog:0,ai:0,ai0:ch.filter(c=>!c.p&&c.role!='k').length,cd:12,imp:0,done:ST.map(()=>0),hold:0,over:0,meet:0,clue:null,msg:'',mt:0,last:performance.now()};
+ spread();ov.style.display='none';
+ toast(role=='k'?'Você carrega a alma da Determinação. Elimine sem testemunhas!':role=='d'?'Investigue os corpos com F e descubra o assassino.':'Faça as tarefas e descubra o assassino!');
+}
+function spread(){const al=S.ch.filter(c=>c.alive);al.forEach((c,i)=>{const a=i*6.283/al.length;c.x=800+Math.cos(a)*45;c.y=500+Math.sin(a)*45;c.tx=null;c.w=1})}
+function toast(t){S.msg=t;S.mt=5}
+function crewN(){return S.ch.filter(c=>c.alive&&c.role!='k').length}
+function mkClue(){const k=S.ch.find(c=>c.role=='k');const d=shuf(S.ch.filter(c=>c.alive&&c.role=='m'&&c!==k)).slice(0,2);S.clue=shuf([k,...d]).map(c=>c.n)}
+function kill(k,v){v.alive=0;S.bodies.push({x:v.x,y:v.y,n:v.n,col:v.col,t:v.t,hat:v.role=='d',age:0});S.cd=14;S.imp=0;
+ if(S.ch[0].role=='d'&&!v.p)toast('Alguém foi eliminado! Procure o corpo (marcado com !).');
+ if(v.p){return end(false,'Você foi eliminado pelo assassino.')}
+ if(crewN()<=1)end(false,'Sobrou só um monstro. O assassino venceu!')}
+function end(crewWin,txt){S.over=1;const P=S.ch[0];const win=P.role=='k'?!crewWin:crewWin;saveStats(win);
+ ov.style.display='block';ov.innerHTML=`<h2>${win?'Vitória!':'Derrota...'}</h2><p>${txt}</p>`+S.ch.map(c=>`<div class="l"><b>${c.n}</b> — ${RL[c.role]}${c.alive?'':' ✝'}</div>`).join('')+`<button onclick="menu()">Jogar de novo</button>`}
+function meet(rep){
+ S.meet=1;if(rep.role=='d')mkClue();
+ const al=S.ch.filter(c=>c.alive),k=al.find(c=>c.role=='k'),P=S.ch[0];
+ let h=`<h2>Reunião de emergência</h2><div class="l"><b>${rep.n}</b> encontrou um corpo!</div>`;
+ al.forEach(c=>{if(c.p)return;let t;const o=rnd(al.filter(x=>x!==c&&x.role!='d'));
+  if(c.role=='d'&&S.clue)t=`Pista: o assassino é <b>${S.clue.join('</b>, <b>')}</b>, um destes três.`;
+  else if(c.role=='k')t=Math.random()<.5?`Foi o <b>${o.n}</b>! Vi ele agindo estranho em ${roomOf(o)}.`:`Eu estava em ${rnd(R)[0]} fazendo tarefas.`;
+  else t=Math.random()<.4?`Desconfio do <b>${o.n}</b>.`:`Eu estava em ${roomOf(c)} fazendo tarefas.`;
+  h+=`<div class="l" style="border-left:6px solid ${c.col}"><b>${c.n}${c.role=='d'?' 🤠':''}:</b> ${t}</div>`});
+ if(P.role=='d')h+=`<div class="l"><b>Sua pista:</b> ${S.clue?S.clue.join(', '):'nenhuma ainda'}</div>`;
+ const seenTxt=Object.entries(P.seen||{}).filter(e=>S.time-e[1].t<40&&S.ch.find(c=>c.n==e[0]).alive).map(e=>`${e[0]} (${e[1].room})`).join(', ');
+ h+=`<div class="l"><b>Você viu há pouco:</b> ${seenTxt||'ninguém'}</div><div class="l"><b>Sua declaração:</b><br>Eu estava em <select id="cr">${R.map(r=>r[0]).concat('Corredor').map(n=>`<option${n==roomOf(P)?' selected':''}>${n}</option>`).join('')}</select> <select id="ca"><option>fazendo tarefas</option><option>andando pelo mapa</option><option>procurando pistas</option><option>escondido</option></select><br>Acho que foi <select id="cs"><option value="">ninguém em especial</option>${al.filter(c=>!c.p).map(c=>`<option>${c.n}</option>`).join('')}</select></div><p>Em quem você vota?</p>`+al.filter(c=>!c.p).map(c=>`<button onclick="vote('${c.n}')" style="border-color:${c.col}">${c.n}</button>`).join('')+`<button onclick="vote('')">Pular</button>`;
+ ov.style.display='block';ov.innerHTML=h}
+function vote(pv){
+ const al=S.ch.filter(c=>c.alive),cnt={};const add=n=>{if(n)cnt[n]=(cnt[n]||0)+1};
+ const kn=al.find(c=>c.role=='k').n;
+ if(S.ch[0].alive)add(pv);
+ const P=S.ch[0],q=id=>{const e=document.getElementById(id);return e?e.value:''},cl0={room:q('cr'),act:q('ca'),acc:q('cs')},re=[],honest=S.time-(S.vis&&S.vis[cl0.room]!==undefined?S.vis[cl0.room]:-999)<45;
+ const wpick=w=>{const e=Object.entries(w).filter(x=>x[1]>0),t=e.reduce((s,x)=>s+x[1],0);if(Math.random()<.1||!t)return '';let r=Math.random()*t;for(const x of e){r-=x[1];if(r<=0)return x[0]}return e[0][0]};
+ al.forEach(c=>{if(c.p)return;let v='';const pool=al.filter(x=>x!==c).map(x=>x.n),w={};pool.forEach(n=>w[n]=1);
+  if(c.role=='k'){if(cl0.acc&&w[cl0.acc]!==undefined)w[cl0.acc]+=4;if(cl0.acc==c.n){w[P.n]+=5;re.push(`<b>${c.n}:</b> Eu?! Quem está agindo estranho é você!`)}}
+  else{if(S.clue)S.clue.forEach(n=>{if(w[n]!==undefined)w[n]+=n==kn?(c.role=='d'?6:4):2});
+   if(cl0.act=='escondido')w[P.n]+=1.5;
+   const sp=c.seen&&c.seen[P.n];if(sp&&S.time-sp.t<60){if(sp.room!=cl0.room){if(!honest&&S.time-sp.t<30){w[P.n]+=4;re.push(`<b>${c.n}:</b> Mentira! Eu vi você em ${sp.room}.`)}}else{w[P.n]=Math.max(.2,w[P.n]-.6);if(Math.random()<.4)re.push(`<b>${c.n}:</b> Confirmo, vi você em ${sp.room}.`)}}
+   if(cl0.acc&&cl0.acc!=c.n&&w[cl0.acc]!==undefined&&Math.random()<.3+(P.role=='d'?.3:0)){w[cl0.acc]+=4;re.push(`<b>${c.n}:</b> Concordo, também desconfio de ${cl0.acc}.`)}}
+  v=wpick(w);add(v)});
+ const e=Object.entries(cnt).sort((a,b)=>b[1]-a[1]);
+ let out='Ninguém foi ejetado (empate ou pulo).',x=null;
+ if(e.length&&(e.length==1||e[0][1]>e[1][1])){x=S.ch.find(c=>c.n==e[0][0]);x.alive=0;
+  out=`<b>${x.n}</b> foi ejetado com ${e[0][1]} votos. ${x.role=='k'?'Era o assassino com a alma da Determinação!':'Não era o assassino...'}`}
+ const tally=e.map(a=>`${a[0]}: ${a[1]}`).join(' · ');
+ out+=`<br><br><small>Sua declaração: eu estava em ${cl0.room}, ${cl0.act}.${cl0.acc?' Acho que foi '+cl0.acc+'.':''}</small>`+re.map(r=>'<br>'+r).join('');
+ if(x&&x.role=='k')return end(true,out);
+ if(x&&x.p)return end(false,out);
+ if(crewN()<=1)return end(false,out+' Sobrou só um monstro: o assassino venceu!');
+ ov.innerHTML=`<h2>Resultado da votação</h2><p>${out}</p><small>${tally||'sem votos'}</small><p><button onclick="resume()">Continuar</button></p>`}
+function resume(){S.bodies=[];S.cd=10;S.imp=0;S.clue=S.clue;S.meet=0;spread();ov.style.display='none'}
+addEventListener('keydown',e=>{if(/INPUT|SELECT/.test(e.target.tagName))return;const k=e.key.toLowerCase();if(!K[k]){K[k]=1;once(k)}if([' ','arrowup','arrowdown'].includes(k))e.preventDefault()});
+addEventListener('keyup',e=>K[e.key.toLowerCase()]=0);
+function once(k){if(!S||S.over||S.meet)return;const P=S.ch[0];
+ if(k==' '&&P.role=='k'&&S.cd<=0){const v=near(P,S.ch.filter(c=>c.alive&&roomIdx(c)==roomIdx(P)),48);if(v)kill(P,v)}
+ if(k=='r'&&nearB(P,60))meet(P);
+ if(k=='f'&&P.role=='d'&&nearB(P,60)){mkClue();toast('Pista: o assassino é '+S.clue.join(', ou ')+'.')}}
+function upd(dt){
+ if(!S||S.over||S.meet)return;
+ const P=S.ch[0];S.mt-=dt;S.cd-=dt;if(S.cd<=0)S.imp+=dt;
+ const dx=(K.d||K.arrowright?1:0)-(K.a||K.arrowleft?1:0),dy=(K.s||K.arrowdown?1:0)-(K.w||K.arrowup?1:0),m=Math.hypot(dx,dy)||1;
+ mv(P,dx/m*130*dt,dy/m*130*dt);
+ // tarefas
+ let at=-1;ST.forEach((s,i)=>{if(!S.done[i]&&Math.hypot(P.x-s[0],P.y-s[1])<38)at=i});
+ if(K.e&&at>=0&&P.role!='k'){S.hold+=dt;if(S.hold>=1.5){S.done[at]=1;S.hold=0;toast('Tarefa concluída!')}}else S.hold=0;
+ const al=S.ch.filter(c=>c.alive);
+ S.time=(S.time||0)+dt;S.vis=S.vis||{};S.vis[roomOf(P)]=S.time;for(const c of al){c.seen=c.seen||{};for(const o of al)if(o!==c&&roomIdx(o)==roomIdx(c)&&dist(o,c)<220)c.seen[o.n]={room:roomOf(o),t:S.time}}
+ const pS=P.role=='k'?0:60,aS=100-pS,all=S.done.every(x=>x);
+ S.ai=Math.min(aS,S.ai+dt*aS/160*(al.filter(c=>!c.p&&c.role!='k').length/S.ai0)*(all?3:1));
+ S.prog=S.done.filter(x=>x).length/ST.length*pS+S.ai;
+ if(S.prog>=99.9)return end(true,'Os monstros concluíram todas as tarefas!');
+ for(const c of al){if(c.p||S.over)continue;
+  if(c.role=='k'&&S.cd<=0&&!S.bodies.length){const v=near(c,al.filter(o=>o.role!='k'),9999);
+   if(v){c.tx=v.x;c.ty=v.y;c.w=0;
+    if(dist(c,v)<26&&roomIdx(c)==roomIdx(v)&&(S.imp>25||!al.some(o=>o!==c&&o!==v&&dist(o,c)<130&&roomIdx(o)==roomIdx(c)))){kill(c,v);continue}}}
+  if(c.w>0){c.w-=dt;continue}
+  if(c.tx==null){const s=Math.random()<.6?rnd(ST):pt();c.tx=s[0]+Math.random()*30-15;c.ty=s[1]+Math.random()*30-15}
+  const wp=nextWP(c,c.tx,c.ty),ax=wp[0]-c.x,ay=wp[1]-c.y,d=Math.hypot(ax,ay),fd=Math.hypot(c.tx-c.x,c.ty-c.y);
+  if(fd<6){c.tx=null;c.w=1+Math.random()*2.5}else if(d>1)mv(c,ax/d*90*dt,ay/d*90*dt);
+  c.st=(c.st||0)+dt;if(c.st>1){if(Math.hypot(c.x-(c.lx||0),c.y-(c.ly||0))<3){c.tx=null;c.w=.3}c.lx=c.x;c.ly=c.y;c.st=0}}
+ if(S.over)return;
+ for(const b of S.bodies){b.age+=dt;if(b.age<20)continue;const r=near(b,al.filter(c=>!c.p&&c.role!='k'&&roomIdx(c)==roomIdx(b)),50);if(r){return meet(r)}}
+}
+function mon(c,dead){
+ const t=c.t%8;g.save();g.translate(c.x,c.y);if(dead){g.rotate(1.5);g.translate(0,-4)}
+ g.fillStyle=c.col;g.strokeStyle='#000a';g.lineWidth=2;
+ if(t==0||t==3||t==5){g.beginPath();g.ellipse(0,0,14,12,0,0,7);g.fill();g.stroke()}
+ g.beginPath();
+ if(t==1||t==7){g.arc(0,-4,13,Math.PI,0);g.lineTo(13,12);g.lineTo(6,8);g.lineTo(0,12);g.lineTo(-6,8);g.lineTo(-13,12);g.closePath()}
+ else if(t==6)g.ellipse(0,-3,11,16,0,0,7);
+ else if(t==2||t==4)g.ellipse(0,0,15,12,0,0,7);
+ g.fill();g.stroke();
+ g.beginPath();
+ if(t==1){g.moveTo(-9,-12);g.lineTo(-12,-23);g.lineTo(-3,-15);g.moveTo(9,-12);g.lineTo(12,-23);g.lineTo(3,-15)}
+ if(t==3){g.moveTo(0,-12);g.lineTo(0,-22);g.moveTo(3,-23);g.arc(0,-23,3,0,7)}
+ if(t==4){for(let i=-1;i<2;i++){g.moveTo(i*8-4,-10);g.lineTo(i*8,-20);g.lineTo(i*8+4,-10)}}
+ if(t==5){g.moveTo(-11,-10);g.arc(-11,-12,5,0,7);g.moveTo(16,-12);g.arc(11,-12,5,0,7)}
+ g.fill();g.stroke();
+ g.fillStyle='#fff';
+ const E=t==2?[[0,-1,6]]:[[-5,-3,3.5],[5,-3,3.5]];
+ for(const e of E){if(dead){g.strokeStyle='#000';g.beginPath();g.moveTo(e[0]-3,e[1]-3);g.lineTo(e[0]+3,e[1]+3);g.moveTo(e[0]+3,e[1]-3);g.lineTo(e[0]-3,e[1]+3);g.stroke()}
+  else{g.beginPath();g.arc(e[0],e[1],e[2],0,7);g.fill();g.fillStyle='#000';g.beginPath();g.arc(e[0]+1,e[1],e[2]/2.4,0,7);g.fill();g.fillStyle='#fff'}}
+ if(c.hat||c.role=='d'){g.fillStyle='#8a5a2b';g.strokeStyle='#000a';const y=t==6?-17:-11;g.beginPath();g.ellipse(0,y,17,4,0,0,7);g.fill();g.stroke();g.fillRect(-8,y-11,16,11);g.fillStyle='#d8b25a';g.fillRect(-8,y-4,16,3)}
+ g.restore()}
+function heart(x,y,s){g.fillStyle='#ff2a2a';g.beginPath();g.moveTo(x,y+s*.9);g.bezierCurveTo(x-s*1.6,y-s*.2,x-s*.7,y-s*1.2,x,y-s*.4);g.bezierCurveTo(x+s*.7,y-s*1.2,x+s*1.6,y-s*.2,x,y+s*.9);g.fill()}
+function draw(){
+ g.fillStyle='#1a1822';g.fillRect(0,0,800,500);g.font='12px system-ui';g.textAlign='left';
+ if(S){const p=S.ch[0];CX=Math.max(0,Math.min(WW-800,p.x-400));CY=Math.max(0,Math.min(WH-500,p.y-250))}
+ g.save();g.translate(-CX,-CY);
+ R.forEach(r=>{g.fillStyle=r[5];g.fillRect(r[1],r[2],r[3],r[4]);g.fillStyle='rgba(255,255,255,.5)';g.fillText(r[0],r[1]+22,r[2]+30)});
+ g.fillStyle='#7a7188';WL.forEach(w=>g.fillRect(w[0],w[1],w[2],w[3]));
+ if(!S){g.restore();return}const P=S.ch[0];
+ ST.forEach((s,i)=>{g.fillStyle=S.done[i]?'#666':'#ffd84d';g.beginPath();g.moveTo(s[0],s[1]-10);g.lineTo(s[0]+10,s[1]);g.lineTo(s[0],s[1]+10);g.lineTo(s[0]-10,s[1]);g.fill()});
+ S.bodies.forEach(b=>{mon(b,1);if(P.role=='d'){g.fillStyle='#ffd84d';g.font='bold 20px system-ui';g.textAlign='center';g.fillText('!',b.x,b.y-18+Math.sin(performance.now()/200)*3)}});
+ S.ch.filter(c=>c.alive).sort((a,b)=>a.y-b.y).forEach(c=>{mon(c,0);g.textAlign='center';g.font='11px system-ui';g.fillStyle=c.p?'#ffd84d':'#fff';
+  g.fillText(c.n+(c.role=='d'?' · Detetive':''),c.x,c.y-(c.role=='d'?38:28));
+  if(c.p&&c.role=='k')heart(c.x,c.y-48,7)});
+ {const a=roomIdx(P),v=a>=0?R[a]:['',0,380,WW,240];g.fillStyle='#08070c';g.beginPath();g.rect(0,0,WW,WH);g.rect(v[1],v[2],v[3],v[4]);g.fill('evenodd')}
+ R.forEach(r=>{const cx=r[1]+r[3]/2,top=r[2]<500,wy=top?r[2]+r[4]-12:r[2],al=.3+.2*Math.sin(performance.now()/300);g.fillStyle='rgba(255,216,77,'+al+')';g.fillRect(cx-60,wy-6,120,24);g.fillStyle='#ffd84d';g.fillRect(cx-68,wy-4,8,20);g.fillRect(cx+60,wy-4,8,20);g.font='bold 10px system-ui';g.textAlign='center';g.fillText('PORTA',cx,top?wy-12:wy+30)});
+ g.restore();arrows();g.textAlign='left';g.fillStyle='#000a';g.fillRect(10,8,204,14);g.fillStyle='#6ee06e';g.fillRect(12,10,Math.min(100,S.prog)*2,10);
+ g.fillStyle='#fff';g.font='11px system-ui';g.fillText('Tarefas',220,19);
+ g.fillText('Papel: '+RL[P.role]+(P.role=='k'?(S.cd>0?'  · recarga '+Math.ceil(S.cd)+'s':'  · pronto (Espaço)'):''),10,38);
+ let h='';if(S.hold>0){g.fillStyle='#ffd84d';g.fillRect(340,470,S.hold/1.5*120,8)}
+ if(nearB(P,60))h='R: reportar corpo'+(P.role=='d'?' · F: investigar':'');
+ if(S.mt>0){g.fillStyle='#000b';g.fillRect(160,455,480,24);g.fillStyle='#fff';g.textAlign='center';g.fillText(S.msg,400,471)}
+ else if(h){g.textAlign='center';g.fillStyle='#fff';g.fillText(h,400,471)}
+}
+function loop(t){const dt=Math.min(.05,(t-(S?S.last:t))/1000);if(S)S.last=t;upd(dt);draw();requestAnimationFrame(loop)}
+init();requestAnimationFrame(loop);
+</script></body></html>
