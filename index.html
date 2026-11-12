@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Among Monstros</title>
+<title>Among Monstros Online</title>
 <style>
 :root{--bg:#ece8f2;--fg:#15131a;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0d0b12;--fg:#f2eef8}}
@@ -40,7 +40,7 @@ function nextWP(c,tx,ty){const a=roomIdx(c),b=roomIdx({x:tx,y:ty}),r=R[a>=0?a:b>
  if(a==b){if(a<0)return[tx,ty];const dz=top?c.y>ins+4:c.y<ins-4;return dz&&Math.abs(c.x-cx)<80?[cx,ins]:[tx,ty]}
  if(a>=0)return Math.abs(c.x-cx)<20?[cx,out]:[cx,ins];
  return Math.abs(c.x-cx)<20?[cx,ins]:[cx,out]}
-function arrows(){const P=S.ch[0];if(P.role!='d')return;S.bodies.forEach(b=>{const sx=b.x-CX,sy=b.y-CY;if(sx>0&&sx<800&&sy>0&&sy<500)return;const a=Math.atan2(sy-250,sx-400),ex=Math.max(20,Math.min(780,sx)),ey=Math.max(50,Math.min(480,sy));g.save();g.translate(ex,ey);g.rotate(a);g.fillStyle='#ffd84d';g.beginPath();g.moveTo(12,0);g.lineTo(-8,-8);g.lineTo(-8,8);g.fill();g.restore()})}
+function arrows(){const P=me();if(P.role!='d')return;S.bodies.forEach(b=>{const sx=b.x-CX,sy=b.y-CY;if(sx>0&&sx<800&&sy>0&&sy<500)return;const a=Math.atan2(sy-250,sx-400),ex=Math.max(20,Math.min(780,sx)),ey=Math.max(50,Math.min(480,sy));g.save();g.translate(ex,ey);g.rotate(a);g.fillStyle='#ffd84d';g.beginPath();g.moveTo(12,0);g.lineTo(-8,-8);g.lineTo(-8,8);g.fill();g.restore()})}
 const NM=['Você','Gelatina','Chifrinho','Fantasminha','Olhão','Espinho','Bolota','Antenado'];
 const CL=['#7bd88f','#f2a65a','#9ad1f5','#c38cf0','#f0e26a','#f08fb4','#8be0d0','#d9d9d9'];
 const RL={m:'Monstro',k:'Assassino (Alma da Determinação)',d:'Detetive'};
@@ -55,7 +55,7 @@ function nearB(c,d){return near(c,S.bodies.filter(b=>roomIdx(b)==roomIdx(c)),d)}
 const SUPABASE_URL='https://mcxaokbuseavrneybwpu.supabase.co';
 const SUPABASE_KEY='sb_publishable_DVPEu38CIw2HRl7Gow-O-A_3koYpfzW';
 let sb=null,USER=null,PROF=null,GUEST=0;
-try{if(window.supabase&&!SUPABASE_URL.startsWith('COLE'))sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY)}catch(e){console.error(e)}
+try{if(window.supabase&&!SUPABASE_URL.startsWith('COLE'))sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{realtime:{params:{eventsPerSecond:40}}})}catch(e){console.error(e)}
 const esc=t=>String(t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const val=id=>document.getElementById(id).value;
 function tr(m){m=String(m);if(/Invalid login/i.test(m))return 'E-mail ou senha incorretos.';if(/already registered/i.test(m))return 'Este e-mail já está cadastrado.';if(/Email not confirmed/i.test(m))return 'Confirme seu e-mail antes de entrar.';if(/valid email/i.test(m))return 'E-mail inválido.';if(/rate limit/i.test(m))return 'Muitas tentativas. Aguarde um pouco.';return m}
@@ -98,83 +98,185 @@ function menu(){
  const who=USER?`<div class="l">👤 <b>${esc(PROF?PROF.username:USER.email)}</b> · partidas: ${PROF?PROF.games:0} · vitórias: ${PROF?PROF.wins:0}</div>`:'';
  const extra=USER?`<button onclick="showRank()">Ranking</button><button onclick="logout()">Sair</button>`:(sb?`<button onclick="GUEST=0;authScreen('in')">Entrar / criar conta</button>`:'');
  ov.innerHTML=`<h2>Among Monstros</h2>${who}<p>Uma nave de monstros, uma alma vermelha cheia de determinação e um detetive de chapéu. Quem é o assassino?</p><p>Escolha seu papel:</p>
-<button onclick="start('m')">Monstro (tripulante)</button><button onclick="start('k')">Assassino ❤ Determinação</button><button onclick="start('d')">Detetive 🤠</button><p>${extra}</p>`}
+<button onclick="start('m')">Monstro (tripulante)</button><button onclick="start('k')">Assassino ❤ Determinação</button><button onclick="start('d')">Detetive 🤠</button>${sb?'<br><button onclick="onlineMenu()">🌐 Jogar online (2 jogadores)</button>':''}<p>${extra}</p>`}
+// ===== ONLINE (Supabase Realtime) =====
+let NET=null,ME=0;
+const me=()=>S.ch[ME];
+const cleanName=t=>String(t==null?'':t).replace(/[^\p{L}\p{N} _-]/gu,'').trim().slice(0,16);
+const okCol=c=>/^#[0-9a-f]{6}$/i.test(c)?c:'#cccccc';
+function send(ev,pl){if(NET&&NET.ch)Promise.resolve(NET.ch.send({type:'broadcast',event:ev,payload:pl||{}})).catch(()=>{})}
+function bind(ch,map){for(const ev in map)ch.on('broadcast',{event:ev},m=>{try{map[ev](m.payload||{})}catch(e){console.error(e)}})}
+function nameNow(){const e=document.getElementById('on');return cleanName(PROF?PROF.username:(e&&e.value)||(USER?USER.email.split('@')[0]:''))||'Jogador'}
+function backMenu(){if(NET){try{sb.removeChannel(NET.ch)}catch(e){}NET=null}ME=0;S=null;menu()}
+function onlineMenu(msg){
+ ov.style.display='block';
+ ov.innerHTML=`<h2>Jogar online</h2>${msg?`<div class="l">${esc(msg)}</div>`:''}<p>Um jogador cria a sala e o outro entra com o código de 4 letras.</p>${PROF?'':'<input id="on" placeholder="Seu nome" maxlength="16"><br>'}<button onclick="createRoom()">Criar sala</button><br><input id="oc" placeholder="Código" maxlength="4" style="text-transform:uppercase;width:120px"><button onclick="joinRoom()">Entrar na sala</button><p><button onclick="menu()">Voltar</button></p>`}
+function lobby(){
+ ov.innerHTML=`<h2>Sala ${esc(NET.code)}</h2><p>Passe este código ao seu amigo.</p>`+(NET.peer?`<div class="l">👤 <b>${esc(NET.peer)}</b> entrou na sala!</div><button onclick="startOnline()">Começar partida</button>`:'<p>Aguardando o amigo entrar...</p>')+`<p><button onclick="backMenu()">Cancelar</button></p>`}
+function createRoom(){
+ const name=nameNow(),code=Array.from({length:4},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.floor(Math.random()*24)]).join('');
+ const ch=sb.channel('mm_'+code,{config:{broadcast:{self:false}}});
+ NET={host:true,code,ch,name,peer:null,lastIn:performance.now(),acc:0};
+ bind(ch,{
+  join:p=>{if(S)return;NET.peer=cleanName(p.name)||'Amigo';send('welcome',{name:NET.name});lobby()},
+  in:p=>{NET.lastIn=performance.now();if(S)S.rin={dx:Math.max(-1,Math.min(1,+p.dx||0)),dy:Math.max(-1,Math.min(1,+p.dy||0)),e:p.e?1:0}},
+  act:p=>{NET.lastIn=performance.now();if(S&&S.ch[1]&&['r','f',' '].includes(p.k))act(S.ch[1],p.k)},
+  vote:p=>{NET.lastIn=performance.now();if(S&&S.meet==1)hostVote(S.ch[1],p.pv,p.cl)}});
+ ch.subscribe(st=>{if(st=='SUBSCRIBED')lobby();else if(st=='CHANNEL_ERROR'||st=='TIMED_OUT'){backMenu();onlineMenu('Falha ao conectar ao Realtime do Supabase.')}})}
+function joinRoom(){
+ const name=nameNow(),code=val('oc').trim().toUpperCase();
+ if(code.length!=4)return onlineMenu('Digite o código de 4 letras.');
+ const ch=sb.channel('mm_'+code,{config:{broadcast:{self:false}}});
+ NET={host:false,code,ch,name,lastSnap:performance.now(),acc:0,last:''};
+ bind(ch,{
+  welcome:p=>{NET.ok=1;clearTimeout(NET.to);ov.innerHTML=`<h2>Conectado!</h2><p>Você entrou na sala de <b>${esc(cleanName(p.name))}</b>. Aguarde o anfitrião iniciar a partida...</p><button onclick="backMenu()">Sair</button>`},
+  start:initGuest,snap:onSnap,
+  toast:p=>{if(S)toast(String(p.t||'').slice(0,120))},
+  meet:p=>{if(S&&!S.over){S.meet=1;renderMeet(p)}},
+  res:p=>{if(S&&Array.isArray(p.out))renderRes({out:p.out,tally:p.tally,cont:false})},
+  resume:()=>{if(S&&!S.over){S.meet=0;S.bodies=[];ov.style.display='none'}},
+  end:p=>{if(S)showEnd(!!p.c,String(p.t||''))}});
+ ch.subscribe(st=>{
+  if(st=='SUBSCRIBED'){send('join',{name});NET.to=setTimeout(()=>{if(NET&&!NET.ok){backMenu();onlineMenu('Sala não encontrada ou o anfitrião não respondeu.')}},6000)}
+  else if(st=='CHANNEL_ERROR'||st=='TIMED_OUT'){backMenu();onlineMenu('Falha ao conectar ao Realtime do Supabase.')}})}
+
+// ===== PARTIDA =====
+function roleMsg(r){return r=='k'?'Você carrega a alma da Determinação. Elimine sem testemunhas!':r=='d'?'Investigue os corpos com F e descubra o assassino.':'Faça as tarefas e descubra o assassino!'}
+function mkChars(names,humans){return names.map((n,i)=>({n,col:CL[i],t:i,x:800,y:500,alive:1,role:'m',tx:null,ty:null,w:0,p:i<humans,done:ST.map(()=>0),hold:0}))}
+function newS(ch){return{ch,bodies:[],prog:0,ai:0,ai0:ch.filter(c=>!c.p&&c.role!='k').length||1,cd:12,imp:0,over:0,meet:0,clue:null,msg:'',mt:0,time:0,votes:{},last:performance.now()}}
 function start(role){
- const ch=NM.map((n,i)=>({n,col:CL[i],t:i,x:400,y:250,alive:1,role:'m',tx:null,ty:null,w:0,p:i==0}));
- const ai=shuf(ch.slice(1));
+ NET=null;ME=0;
+ const ch=mkChars(NM,1),ai=shuf(ch.slice(1));
  if(role=='k'){ch[0].role='k';ai[0].role='d'}
  else if(role=='d'){ch[0].role='d';ai[0].role='k'}
  else{ai[0].role='k';ai[1].role='d'}
- S={ch,bodies:[],prog:0,ai:0,ai0:ch.filter(c=>!c.p&&c.role!='k').length,cd:12,imp:0,done:ST.map(()=>0),hold:0,over:0,meet:0,clue:null,msg:'',mt:0,last:performance.now()};
- spread();ov.style.display='none';
- toast(role=='k'?'Você carrega a alma da Determinação. Elimine sem testemunhas!':role=='d'?'Investigue os corpos com F e descubra o assassino.':'Faça as tarefas e descubra o assassino!');
-}
+ S=newS(ch);spread();ov.style.display='none';toast(roleMsg(ch[0].role))}
+function startOnline(){
+ if(!NET||!NET.host||!NET.peer)return;
+ const a=NET.name,b=NET.peer==a?NET.peer+' 2':NET.peer;
+ const bots=NM.slice(2).map(n=>(n==a||n==b)?n+' 2':n);
+ const ch=mkChars([a,b,...bots],2),r=shuf(ch);r[0].role='k';r[1].role='d';
+ ME=0;S=newS(ch);spread();ov.style.display='none';NET.lastIn=performance.now();
+ send('start',{ch:ch.map(c=>({n:c.n,col:c.col,t:c.t,role:c.role,p:c.p?1:0,x:c.x,y:c.y}))});
+ toast(roleMsg(ch[0].role))}
+function initGuest(p){
+ if(!NET||NET.host||!Array.isArray(p.ch)||p.ch.length!=8)return;
+ ME=1;
+ const ch=p.ch.map((c,i)=>({n:cleanName(c.n)||'?',col:okCol(c.col),t:(c.t|0)%8,role:['m','k','d'].includes(c.role)?c.role:'m',p:!!c.p,x:+c.x||800,y:+c.y||500,gx:+c.x||800,gy:+c.y||500,alive:1,done:ST.map(()=>0)}));
+ S=newS(ch);ov.style.display='none';NET.lastSnap=performance.now();toast(roleMsg(ch[1].role))}
 function spread(){const al=S.ch.filter(c=>c.alive);al.forEach((c,i)=>{const a=i*6.283/al.length;c.x=800+Math.cos(a)*45;c.y=500+Math.sin(a)*45;c.tx=null;c.w=1})}
 function toast(t){S.msg=t;S.mt=5}
+function say(h,t){if(h===me())toast(t);else if(NET&&NET.host)send('toast',{t})}
 function crewN(){return S.ch.filter(c=>c.alive&&c.role!='k').length}
 function mkClue(){const k=S.ch.find(c=>c.role=='k');const d=shuf(S.ch.filter(c=>c.alive&&c.role=='m'&&c!==k)).slice(0,2);S.clue=shuf([k,...d]).map(c=>c.n)}
 function kill(k,v){v.alive=0;S.bodies.push({x:v.x,y:v.y,n:v.n,col:v.col,t:v.t,hat:v.role=='d',age:0});S.cd=14;S.imp=0;
- if(S.ch[0].role=='d'&&!v.p)toast('Alguém foi eliminado! Procure o corpo (marcado com !).');
- if(v.p){return end(false,'Você foi eliminado pelo assassino.')}
+ S.ch.filter(h=>h.p&&h.role=='d'&&h.alive).forEach(h=>say(h,'Alguém foi eliminado! Procure o corpo (marcado com !).'));
+ if(v.p){if(!NET)return end(false,'Você foi eliminado pelo assassino.');say(v,'Você foi eliminado! Agora você é espectador.')}
  if(crewN()<=1)end(false,'Sobrou só um monstro. O assassino venceu!')}
-function end(crewWin,txt){S.over=1;const P=S.ch[0];const win=P.role=='k'?!crewWin:crewWin;saveStats(win);
- ov.style.display='block';ov.innerHTML=`<h2>${win?'Vitória!':'Derrota...'}</h2><p>${txt}</p>`+S.ch.map(c=>`<div class="l"><b>${c.n}</b> — ${RL[c.role]}${c.alive?'':' ✝'}</div>`).join('')+`<button onclick="menu()">Jogar de novo</button>`}
+function end(crewWin,txt){if(S.over)return;clearTimeout(S.mto);if(NET&&NET.host)send('end',{c:crewWin?1:0,t:txt});showEnd(crewWin,txt)}
+function showEnd(crewWin,txt){S.over=1;const P=me();const win=P.role=='k'?!crewWin:crewWin;saveStats(win);
+ ov.style.display='block';ov.innerHTML=`<h2>${win?'Vitória!':'Derrota...'}</h2><p>${esc(txt).replace(/\n/g,'<br>')}</p>`+S.ch.map(c=>`<div class="l"><b>${esc(c.n)}</b> — ${RL[c.role]}${c.alive?'':' ✝'}</div>`).join('')+`<button onclick="backMenu()">Jogar de novo</button>`}
+
+// ===== REUNIÃO =====
+function mdata(h){const al=S.ch.filter(c=>c.alive);
+ const o={rep:S.mrep,lines:S.mlines,role:h.role,alive:!!h.alive,clue:h.role=='d'&&S.clue?S.clue:null};
+ if(h.alive){o.seen=Object.entries(h.seen||{}).filter(e=>S.time-e[1].t<40&&S.ch.find(c=>c.n==e[0])&&S.ch.find(c=>c.n==e[0]).alive).map(e=>`${e[0]} (${e[1].room})`).join(', ');
+  o.room=roomOf(h);o.opts=al.filter(c=>c!==h).map(c=>[S.ch.indexOf(c),c.n])}
+ return o}
+function renderMeet(o){
+ ov.style.display='block';
+ let h=`<h2>Reunião de emergência</h2><div class="l"><b>${esc(o.rep)}</b> encontrou um corpo!</div>`+(Array.isArray(o.lines)?o.lines:[]).map(l=>`<div class="l" style="border-left:6px solid ${esc(okCol(l.col))}"><b>${esc(l.n)}${l.d?' 🤠':''}:</b> ${esc(l.t)}</div>`).join('');
+ if(o.role=='d')h+=`<div class="l"><b>Sua pista:</b> ${Array.isArray(o.clue)?esc(o.clue.join(', ')):'nenhuma ainda'}</div>`;
+ if(!o.alive)h+='<p>Você foi eliminado. Aguarde o resultado da votação.</p>';
+ else{const op=Array.isArray(o.opts)?o.opts:[];
+  h+=`<div class="l"><b>Você viu há pouco:</b> ${esc(o.seen||'ninguém')}</div><div class="l"><b>Sua declaração:</b><br>Eu estava em <select id="cr">${R.map(r=>r[0]).concat('Corredor').map(n=>`<option${n==o.room?' selected':''}>${n}</option>`).join('')}</select> <select id="ca"><option>fazendo tarefas</option><option>andando pelo mapa</option><option>procurando pistas</option><option>escondido</option></select><br>Acho que foi <select id="cs"><option value="">ninguém em especial</option>${op.map(a=>`<option value="${a[0]|0}">${esc(a[1])}</option>`).join('')}</select></div><p>Em quem você vota?</p>`+op.map(a=>`<button onclick="vote(${a[0]|0})">${esc(a[1])}</button>`).join('')+`<button onclick="vote(-1)">Pular</button>`}
+ ov.innerHTML=h}
+function renderRes(o){
+ ov.style.display='block';
+ ov.innerHTML=`<h2>Resultado da votação</h2><p>${o.out.map(esc).join('<br>')}</p><small>${esc(o.tally||'')}</small>`+(o.cont?'<p><button onclick="resume()">Continuar</button></p>':'<p><small>Voltando ao jogo em instantes...</small></p>')}
 function meet(rep){
- S.meet=1;if(rep.role=='d')mkClue();
- const al=S.ch.filter(c=>c.alive),k=al.find(c=>c.role=='k'),P=S.ch[0];
- let h=`<h2>Reunião de emergência</h2><div class="l"><b>${rep.n}</b> encontrou um corpo!</div>`;
- al.forEach(c=>{if(c.p)return;let t;const o=rnd(al.filter(x=>x!==c&&x.role!='d'));
-  if(c.role=='d'&&S.clue)t=`Pista: o assassino é <b>${S.clue.join('</b>, <b>')}</b>, um destes três.`;
-  else if(c.role=='k')t=Math.random()<.5?`Foi o <b>${o.n}</b>! Vi ele agindo estranho em ${roomOf(o)}.`:`Eu estava em ${rnd(R)[0]} fazendo tarefas.`;
-  else t=Math.random()<.4?`Desconfio do <b>${o.n}</b>.`:`Eu estava em ${roomOf(c)} fazendo tarefas.`;
-  h+=`<div class="l" style="border-left:6px solid ${c.col}"><b>${c.n}${c.role=='d'?' 🤠':''}:</b> ${t}</div>`});
- if(P.role=='d')h+=`<div class="l"><b>Sua pista:</b> ${S.clue?S.clue.join(', '):'nenhuma ainda'}</div>`;
- const seenTxt=Object.entries(P.seen||{}).filter(e=>S.time-e[1].t<40&&S.ch.find(c=>c.n==e[0]).alive).map(e=>`${e[0]} (${e[1].room})`).join(', ');
- h+=`<div class="l"><b>Você viu há pouco:</b> ${seenTxt||'ninguém'}</div><div class="l"><b>Sua declaração:</b><br>Eu estava em <select id="cr">${R.map(r=>r[0]).concat('Corredor').map(n=>`<option${n==roomOf(P)?' selected':''}>${n}</option>`).join('')}</select> <select id="ca"><option>fazendo tarefas</option><option>andando pelo mapa</option><option>procurando pistas</option><option>escondido</option></select><br>Acho que foi <select id="cs"><option value="">ninguém em especial</option>${al.filter(c=>!c.p).map(c=>`<option>${c.n}</option>`).join('')}</select></div><p>Em quem você vota?</p>`+al.filter(c=>!c.p).map(c=>`<button onclick="vote('${c.n}')" style="border-color:${c.col}">${c.n}</button>`).join('')+`<button onclick="vote('')">Pular</button>`;
- ov.style.display='block';ov.innerHTML=h}
-function vote(pv){
- const al=S.ch.filter(c=>c.alive),cnt={};const add=n=>{if(n)cnt[n]=(cnt[n]||0)+1};
+ S.meet=1;S.votes={};if(rep.role=='d')mkClue();
+ const al=S.ch.filter(c=>c.alive);S.mrep=rep.n;S.mlines=[];
+ al.forEach(c=>{if(c.p)return;const o=rnd(al.filter(x=>x!==c&&x.role!='d'))||c;let t;
+  if(c.role=='d'&&S.clue)t=`Pista: o assassino é ${S.clue.join(', ')}, um destes três.`;
+  else if(c.role=='k')t=Math.random()<.5?`Foi o ${o.n}! Vi ele agindo estranho em ${roomOf(o)}.`:`Eu estava em ${rnd(R)[0]} fazendo tarefas.`;
+  else t=Math.random()<.4?`Desconfio do ${o.n}.`:`Eu estava em ${roomOf(c)} fazendo tarefas.`;
+  S.mlines.push({n:c.n,col:c.col,d:c.role=='d',t})});
+ S.ch.filter(c=>c.p).forEach(h=>{const d=mdata(h);if(h===me())renderMeet(d);else send('meet',d)});
+ clearTimeout(S.mto);
+ if(!S.ch.some(c=>c.p&&c.alive))return finishVote();
+ if(NET)S.mto=setTimeout(finishVote,45000)}
+function vote(i){
+ const q=id=>{const e=document.getElementById(id);return e?e.value:''},cl={room:q('cr'),act:q('ca'),acc:q('cs')};
+ ov.innerHTML='<h2>Voto registrado</h2><p>Aguardando os outros jogadores...</p>';
+ if(NET&&!NET.host)send('vote',{pv:i,cl});else hostVote(me(),i,cl)}
+function hostVote(h,pv,cl){
+ if(!S||S.meet!=1||!h||!h.alive)return;
+ const rooms=R.map(r=>r[0]).concat('Corredor'),acts=['fazendo tarefas','andando pelo mapa','procurando pistas','escondido'];
+ cl=cl||{};cl={room:rooms.includes(cl.room)?cl.room:'Corredor',act:acts.includes(cl.act)?cl.act:acts[0],acc:/^\d+$/.test(String(cl.acc))?String(cl.acc):''};
+ S.votes[S.ch.indexOf(h)]={pv:Number.isInteger(pv)?pv:-1,cl};
+ if(S.ch.filter(c=>c.p&&c.alive).every(c=>S.votes[S.ch.indexOf(c)]))finishVote()}
+function finishVote(){
+ if(!S||S.meet!=1)return;S.meet=2;clearTimeout(S.mto);
+ const al=S.ch.filter(c=>c.alive),cnt={},add=n=>{if(n)cnt[n]=(cnt[n]||0)+1},re=[],claims=[];
  const kn=al.find(c=>c.role=='k').n;
- if(S.ch[0].alive)add(pv);
- const P=S.ch[0],q=id=>{const e=document.getElementById(id);return e?e.value:''},cl0={room:q('cr'),act:q('ca'),acc:q('cs')},re=[],honest=S.time-(S.vis&&S.vis[cl0.room]!==undefined?S.vis[cl0.room]:-999)<45;
+ al.forEach(h=>{if(!h.p)return;const v=S.votes[S.ch.indexOf(h)];if(!v)return;
+  const t=S.ch[v.pv];if(t&&t.alive&&t!==h)add(t.n);
+  const a=v.cl.acc===''?null:S.ch[+v.cl.acc];
+  claims.push({h,room:v.cl.room,act:v.cl.act,acc:a&&a.alive&&a!==h?a.n:'',honest:S.time-(h.vis&&h.vis[v.cl.room]!==undefined?h.vis[v.cl.room]:-999)<45})});
  const wpick=w=>{const e=Object.entries(w).filter(x=>x[1]>0),t=e.reduce((s,x)=>s+x[1],0);if(Math.random()<.1||!t)return '';let r=Math.random()*t;for(const x of e){r-=x[1];if(r<=0)return x[0]}return e[0][0]};
- al.forEach(c=>{if(c.p)return;let v='';const pool=al.filter(x=>x!==c).map(x=>x.n),w={};pool.forEach(n=>w[n]=1);
-  if(c.role=='k'){if(cl0.acc&&w[cl0.acc]!==undefined)w[cl0.acc]+=4;if(cl0.acc==c.n){w[P.n]+=5;re.push(`<b>${c.n}:</b> Eu?! Quem está agindo estranho é você!`)}}
+ al.forEach(c=>{if(c.p)return;const pool=al.filter(x=>x!==c).map(x=>x.n),w={};pool.forEach(n=>w[n]=1);
+  if(c.role=='k'){claims.forEach(q=>{if(q.acc&&w[q.acc]!==undefined)w[q.acc]+=4;if(q.acc==c.n){w[q.h.n]+=5;re.push(`${c.n}: Eu?! Quem está agindo estranho é ${q.h.n}!`)}})}
   else{if(S.clue)S.clue.forEach(n=>{if(w[n]!==undefined)w[n]+=n==kn?(c.role=='d'?6:4):2});
-   if(cl0.act=='escondido')w[P.n]+=1.5;
-   const sp=c.seen&&c.seen[P.n];if(sp&&S.time-sp.t<60){if(sp.room!=cl0.room){if(!honest&&S.time-sp.t<30){w[P.n]+=4;re.push(`<b>${c.n}:</b> Mentira! Eu vi você em ${sp.room}.`)}}else{w[P.n]=Math.max(.2,w[P.n]-.6);if(Math.random()<.4)re.push(`<b>${c.n}:</b> Confirmo, vi você em ${sp.room}.`)}}
-   if(cl0.acc&&cl0.acc!=c.n&&w[cl0.acc]!==undefined&&Math.random()<.3+(P.role=='d'?.3:0)){w[cl0.acc]+=4;re.push(`<b>${c.n}:</b> Concordo, também desconfio de ${cl0.acc}.`)}}
-  v=wpick(w);add(v)});
- const e=Object.entries(cnt).sort((a,b)=>b[1]-a[1]);
- let out='Ninguém foi ejetado (empate ou pulo).',x=null;
+   claims.forEach(q=>{const P=q.h;
+    if(q.act=='escondido')w[P.n]+=1.5;
+    const sp=c.seen&&c.seen[P.n];
+    if(sp&&S.time-sp.t<60){if(sp.room!=q.room){if(!q.honest&&S.time-sp.t<30){w[P.n]+=4;re.push(`${c.n}: Mentira! Eu vi ${P.n} em ${sp.room}.`)}}else{w[P.n]=Math.max(.2,w[P.n]-.6);if(Math.random()<.4)re.push(`${c.n}: Confirmo, vi ${P.n} em ${sp.room}.`)}}
+    if(q.acc&&q.acc!=c.n&&w[q.acc]!==undefined&&Math.random()<.3+(P.role=='d'?.3:0)){w[q.acc]+=4;re.push(`${c.n}: Concordo com ${P.n}, também desconfio de ${q.acc}.`)}})}
+  add(wpick(w))});
+ const e=Object.entries(cnt).sort((a,b)=>b[1]-a[1]),lines=[];let x=null;
  if(e.length&&(e.length==1||e[0][1]>e[1][1])){x=S.ch.find(c=>c.n==e[0][0]);x.alive=0;
-  out=`<b>${x.n}</b> foi ejetado com ${e[0][1]} votos. ${x.role=='k'?'Era o assassino com a alma da Determinação!':'Não era o assassino...'}`}
- const tally=e.map(a=>`${a[0]}: ${a[1]}`).join(' · ');
- out+=`<br><br><small>Sua declaração: eu estava em ${cl0.room}, ${cl0.act}.${cl0.acc?' Acho que foi '+cl0.acc+'.':''}</small>`+re.map(r=>'<br>'+r).join('');
- if(x&&x.role=='k')return end(true,out);
- if(x&&x.p)return end(false,out);
- if(crewN()<=1)return end(false,out+' Sobrou só um monstro: o assassino venceu!');
- ov.innerHTML=`<h2>Resultado da votação</h2><p>${out}</p><small>${tally||'sem votos'}</small><p><button onclick="resume()">Continuar</button></p>`}
-function resume(){S.bodies=[];S.cd=10;S.imp=0;S.clue=S.clue;S.meet=0;spread();ov.style.display='none'}
+  lines.push(`${x.n} foi ejetado com ${e[0][1]} votos. ${x.role=='k'?'Era o assassino com a alma da Determinação!':'Não era o assassino...'}`)}
+ else lines.push('Ninguém foi ejetado (empate ou pulo).');
+ claims.forEach(q=>lines.push(`${q.h.n}: estava em ${q.room}, ${q.act}.${q.acc?' Acha que foi '+q.acc+'.':''}`));
+ re.forEach(r=>lines.push(r));
+ const tally=e.map(a=>`${a[0]}: ${a[1]}`).join(' · ')||'sem votos';
+ if(x&&x.role=='k')return end(true,lines.join('\n'));
+ if(x&&x.p&&!NET)return end(false,lines.join('\n'));
+ if(crewN()<=1)return end(false,lines.join('\n')+'\nSobrou só um monstro: o assassino venceu!');
+ const o={out:lines,tally,cont:!NET};renderRes(o);
+ if(NET){send('res',o);setTimeout(resume,9000)}}
+function resume(){if(!S||S.over||S.meet!=2)return;S.bodies=[];S.cd=10;S.imp=0;S.meet=0;S.votes={};S.ch.forEach(c=>c.hold=0);spread();ov.style.display='none';send('resume')}
+
+// ===== ENTRADA =====
 addEventListener('keydown',e=>{if(/INPUT|SELECT/.test(e.target.tagName))return;const k=e.key.toLowerCase();if(!K[k]){K[k]=1;once(k)}if([' ','arrowup','arrowdown'].includes(k))e.preventDefault()});
 addEventListener('keyup',e=>K[e.key.toLowerCase()]=0);
-function once(k){if(!S||S.over||S.meet)return;const P=S.ch[0];
+const localIn=()=>({dx:(K.d||K.arrowright?1:0)-(K.a||K.arrowleft?1:0),dy:(K.s||K.arrowdown?1:0)-(K.w||K.arrowup?1:0),e:K.e?1:0});
+function once(k){if(!S||S.over||S.meet)return;
+ if(NET&&!NET.host){if(k==' '||k=='r'||k=='f')send('act',{k});return}
+ act(me(),k)}
+function act(P,k){if(!S||S.over||S.meet||!P||!P.alive)return;
  if(k==' '&&P.role=='k'&&S.cd<=0){const v=near(P,S.ch.filter(c=>c.alive&&roomIdx(c)==roomIdx(P)),48);if(v)kill(P,v)}
  if(k=='r'&&nearB(P,60))meet(P);
- if(k=='f'&&P.role=='d'&&nearB(P,60)){mkClue();toast('Pista: o assassino é '+S.clue.join(', ou ')+'.')}}
+ if(k=='f'&&P.role=='d'&&nearB(P,60)){mkClue();say(P,'Pista: o assassino é '+S.clue.join(', ou ')+'.')}}
+
+// ===== SIMULAÇÃO (anfitrião / offline) =====
 function upd(dt){
  if(!S||S.over||S.meet)return;
- const P=S.ch[0];S.mt-=dt;S.cd-=dt;if(S.cd<=0)S.imp+=dt;
- const dx=(K.d||K.arrowright?1:0)-(K.a||K.arrowleft?1:0),dy=(K.s||K.arrowdown?1:0)-(K.w||K.arrowup?1:0),m=Math.hypot(dx,dy)||1;
- mv(P,dx/m*130*dt,dy/m*130*dt);
- // tarefas
- let at=-1;ST.forEach((s,i)=>{if(!S.done[i]&&Math.hypot(P.x-s[0],P.y-s[1])<38)at=i});
- if(K.e&&at>=0&&P.role!='k'){S.hold+=dt;if(S.hold>=1.5){S.done[at]=1;S.hold=0;toast('Tarefa concluída!')}}else S.hold=0;
+ S.mt-=dt;S.cd-=dt;if(S.cd<=0)S.imp+=dt;S.time+=dt;
+ if(NET&&NET.host&&S.ch[1].p&&performance.now()-NET.lastIn>12000){S.ch[1].p=false;toast('Seu amigo desconectou. O personagem dele virou um bot.')}
+ S.ch.forEach(h=>{if(!h.p||!h.alive)return;
+  const inp=h===me()?localIn():(S.rin||{dx:0,dy:0,e:0}),m=Math.hypot(inp.dx,inp.dy)||1;
+  mv(h,inp.dx/m*130*dt,inp.dy/m*130*dt);
+  let at=-1;ST.forEach((s,i)=>{if(!h.done[i]&&Math.hypot(h.x-s[0],h.y-s[1])<38)at=i});
+  if(inp.e&&at>=0&&h.role!='k'){h.hold+=dt;if(h.hold>=1.5){h.done[at]=1;h.hold=0;say(h,'Tarefa concluída!')}}else h.hold=0;
+  h.vis=h.vis||{};h.vis[roomOf(h)]=S.time});
  const al=S.ch.filter(c=>c.alive);
- S.time=(S.time||0)+dt;S.vis=S.vis||{};S.vis[roomOf(P)]=S.time;for(const c of al){c.seen=c.seen||{};for(const o of al)if(o!==c&&roomIdx(o)==roomIdx(c)&&dist(o,c)<220)c.seen[o.n]={room:roomOf(o),t:S.time}}
- const pS=P.role=='k'?0:60,aS=100-pS,all=S.done.every(x=>x);
+ for(const c of al){c.seen=c.seen||{};for(const o of al)if(o!==c&&roomIdx(o)==roomIdx(c)&&dist(o,c)<220)c.seen[o.n]={room:roomOf(o),t:S.time}}
+ const nk=S.ch.filter(c=>c.p&&c.alive&&c.role!='k'),pS=S.ch.some(c=>c.p&&c.role!='k')?60:0,aS=100-pS,all=nk.length>0&&nk.every(h=>h.done.every(x=>x));
  S.ai=Math.min(aS,S.ai+dt*aS/160*(al.filter(c=>!c.p&&c.role!='k').length/S.ai0)*(all?3:1));
- S.prog=S.done.filter(x=>x).length/ST.length*pS+S.ai;
+ const hp=S.ch.filter(c=>c.p&&c.role!='k');
+ S.prog=(hp.length?hp.reduce((t,h)=>t+(h.alive?h.done.filter(x=>x).length/ST.length:1),0)/hp.length*pS:0)+S.ai;
  if(S.prog>=99.9)return end(true,'Os monstros concluíram todas as tarefas!');
  for(const c of al){if(c.p||S.over)continue;
   if(c.role=='k'&&S.cd<=0&&!S.bodies.length){const v=near(c,al.filter(o=>o.role!='k'),9999);
@@ -188,6 +290,21 @@ function upd(dt){
  if(S.over)return;
  for(const b of S.bodies){b.age+=dt;if(b.age<20)continue;const r=near(b,al.filter(c=>!c.p&&c.role!='k'&&roomIdx(c)==roomIdx(b)),50);if(r){return meet(r)}}
 }
+function hostTick(dt){
+ NET.acc+=dt;if(NET.acc<.083)return;NET.acc=0;const g1=S.ch[1];
+ send('snap',{ch:S.ch.map(c=>[Math.round(c.x),Math.round(c.y),c.alive?1:0]),bd:S.bodies.map(b=>[Math.round(b.x),Math.round(b.y),b.n,b.col,b.t,b.hat?1:0]),pr:S.prog,cd:S.cd,dn:g1.done,hd:g1.hold||0})}
+function onSnap(p){
+ if(!S||!NET||NET.host||!Array.isArray(p.ch))return;NET.lastSnap=performance.now();
+ S.ch.forEach((c,i)=>{const s=p.ch[i];if(!s)return;c.gx=+s[0]||0;c.gy=+s[1]||0;c.alive=s[2]?1:0;if(Math.hypot(c.gx-c.x,c.gy-c.y)>150){c.x=c.gx;c.y=c.gy}});
+ S.bodies=(Array.isArray(p.bd)?p.bd:[]).map(b=>({x:+b[0]||0,y:+b[1]||0,n:cleanName(b[2]),col:okCol(b[3]),t:(b[4]|0)%8,hat:!!b[5]}));
+ S.prog=+p.pr||0;S.cd=+p.cd||0;if(Array.isArray(p.dn))S.ch[ME].done=p.dn.map(x=>x?1:0);S.hold=+p.hd||0}
+function guestTick(dt){
+ S.mt-=dt;
+ S.ch.forEach(c=>{if(c.gx!==undefined){const k=Math.min(1,dt*14);c.x+=(c.gx-c.x)*k;c.y+=(c.gy-c.y)*k}});
+ NET.acc+=dt;const i=localIn(),key=i.dx+','+i.dy+','+i.e;
+ if(NET.acc>.05&&(S.meet?NET.acc>.5:(key!=NET.last||NET.acc>.25))){NET.acc=0;NET.last=key;send('in',S.meet?{dx:0,dy:0,e:0}:i)}
+ if(performance.now()-NET.lastSnap>12000&&!S.over&&!NET.lost){NET.lost=1;ov.style.display='block';ov.innerHTML='<h2>Conexão perdida</h2><p>O anfitrião não responde.</p><button onclick="backMenu()">Voltar ao menu</button>'}}
+function FOC(){const P=me();return P.alive?P:(S.ch.find(c=>c.p&&c.alive)||S.ch.find(c=>c.alive)||P)}
 function mon(c,dead){
  const t=c.t%8;g.save();g.translate(c.x,c.y);if(dead){g.rotate(1.5);g.translate(0,-4)}
  g.fillStyle=c.col;g.strokeStyle='#000a';g.lineWidth=2;
@@ -212,26 +329,30 @@ function mon(c,dead){
 function heart(x,y,s){g.fillStyle='#ff2a2a';g.beginPath();g.moveTo(x,y+s*.9);g.bezierCurveTo(x-s*1.6,y-s*.2,x-s*.7,y-s*1.2,x,y-s*.4);g.bezierCurveTo(x+s*.7,y-s*1.2,x+s*1.6,y-s*.2,x,y+s*.9);g.fill()}
 function draw(){
  g.fillStyle='#1a1822';g.fillRect(0,0,800,500);g.font='12px system-ui';g.textAlign='left';
- if(S){const p=S.ch[0];CX=Math.max(0,Math.min(WW-800,p.x-400));CY=Math.max(0,Math.min(WH-500,p.y-250))}
+ if(S){const p=FOC();CX=Math.max(0,Math.min(WW-800,p.x-400));CY=Math.max(0,Math.min(WH-500,p.y-250))}
  g.save();g.translate(-CX,-CY);
  R.forEach(r=>{g.fillStyle=r[5];g.fillRect(r[1],r[2],r[3],r[4]);g.fillStyle='rgba(255,255,255,.5)';g.fillText(r[0],r[1]+22,r[2]+30)});
  g.fillStyle='#7a7188';WL.forEach(w=>g.fillRect(w[0],w[1],w[2],w[3]));
- if(!S){g.restore();return}const P=S.ch[0];
- ST.forEach((s,i)=>{g.fillStyle=S.done[i]?'#666':'#ffd84d';g.beginPath();g.moveTo(s[0],s[1]-10);g.lineTo(s[0]+10,s[1]);g.lineTo(s[0],s[1]+10);g.lineTo(s[0]-10,s[1]);g.fill()});
+ if(!S){g.restore();return}const P=me();
+ ST.forEach((s,i)=>{g.fillStyle=P.done[i]?'#666':'#ffd84d';g.beginPath();g.moveTo(s[0],s[1]-10);g.lineTo(s[0]+10,s[1]);g.lineTo(s[0],s[1]+10);g.lineTo(s[0]-10,s[1]);g.fill()});
  S.bodies.forEach(b=>{mon(b,1);if(P.role=='d'){g.fillStyle='#ffd84d';g.font='bold 20px system-ui';g.textAlign='center';g.fillText('!',b.x,b.y-18+Math.sin(performance.now()/200)*3)}});
- S.ch.filter(c=>c.alive).sort((a,b)=>a.y-b.y).forEach(c=>{mon(c,0);g.textAlign='center';g.font='11px system-ui';g.fillStyle=c.p?'#ffd84d':'#fff';
+ S.ch.filter(c=>c.alive).sort((a,b)=>a.y-b.y).forEach(c=>{mon(c,0);g.textAlign='center';g.font='11px system-ui';g.fillStyle=c===P?'#ffd84d':c.p?'#7fe0ff':'#fff';
   g.fillText(c.n+(c.role=='d'?' · Detetive':''),c.x,c.y-(c.role=='d'?38:28));
-  if(c.p&&c.role=='k')heart(c.x,c.y-48,7)});
- {const a=roomIdx(P),v=a>=0?R[a]:['',0,380,WW,240];g.fillStyle='#08070c';g.beginPath();g.rect(0,0,WW,WH);g.rect(v[1],v[2],v[3],v[4]);g.fill('evenodd')}
+  if(c===P&&c.role=='k')heart(c.x,c.y-48,7)});
+ {const a=roomIdx(FOC()),v=a>=0?R[a]:['',0,380,WW,240];g.fillStyle='#08070c';g.beginPath();g.rect(0,0,WW,WH);g.rect(v[1],v[2],v[3],v[4]);g.fill('evenodd')}
  R.forEach(r=>{const cx=r[1]+r[3]/2,top=r[2]<500,wy=top?r[2]+r[4]-12:r[2],al=.3+.2*Math.sin(performance.now()/300);g.fillStyle='rgba(255,216,77,'+al+')';g.fillRect(cx-60,wy-6,120,24);g.fillStyle='#ffd84d';g.fillRect(cx-68,wy-4,8,20);g.fillRect(cx+60,wy-4,8,20);g.font='bold 10px system-ui';g.textAlign='center';g.fillText('PORTA',cx,top?wy-12:wy+30)});
  g.restore();arrows();g.textAlign='left';g.fillStyle='#000a';g.fillRect(10,8,204,14);g.fillStyle='#6ee06e';g.fillRect(12,10,Math.min(100,S.prog)*2,10);
  g.fillStyle='#fff';g.font='11px system-ui';g.fillText('Tarefas',220,19);
  g.fillText('Papel: '+RL[P.role]+(P.role=='k'?(S.cd>0?'  · recarga '+Math.ceil(S.cd)+'s':'  · pronto (Espaço)'):''),10,38);
- let h='';if(S.hold>0){g.fillStyle='#ffd84d';g.fillRect(340,470,S.hold/1.5*120,8)}
+ let h='';const hd=NET&&!NET.host?S.hold:(P.hold||0);if(hd>0){g.fillStyle='#ffd84d';g.fillRect(340,470,hd/1.5*120,8)}
+ if(!P.alive){g.textAlign='left';g.fillStyle='#ff6b6b';g.fillText('Você foi eliminado — assistindo como espectador',10,56)}
  if(nearB(P,60))h='R: reportar corpo'+(P.role=='d'?' · F: investigar':'');
  if(S.mt>0){g.fillStyle='#000b';g.fillRect(160,455,480,24);g.fillStyle='#fff';g.textAlign='center';g.fillText(S.msg,400,471)}
  else if(h){g.textAlign='center';g.fillStyle='#fff';g.fillText(h,400,471)}
 }
-function loop(t){const dt=Math.min(.05,(t-(S?S.last:t))/1000);if(S)S.last=t;upd(dt);draw();requestAnimationFrame(loop)}
+function loop(t){const dt=Math.min(.05,(t-(S?S.last:t))/1000);if(S)S.last=t;
+ if(S&&NET&&!NET.host)guestTick(dt);else upd(dt);
+ if(S&&NET&&NET.host)hostTick(dt);
+ draw();requestAnimationFrame(loop)}
 init();requestAnimationFrame(loop);
 </script></body></html>
