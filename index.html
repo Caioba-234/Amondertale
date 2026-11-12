@@ -52,8 +52,8 @@ function roomOf(c){for(const r of R)if(c.x>=r[1]&&c.x<r[1]+r[3]&&c.y>=r[2]&&c.y<
 function near(c,l,d){let b=null,m=d;for(const o of l){if(o===c)continue;const k=dist(c,o);if(k<m){m=k;b=o}}return b}
 function nearB(c,d){return near(c,S.bodies.filter(b=>roomIdx(b)==roomIdx(c)),d)}
 // ===== SUPABASE =====
-const SUPABASE_URL='COLE_SUA_URL_AQUI';
-const SUPABASE_KEY='COLE_SUA_CHAVE_PUBLICA_AQUI';
+const SUPABASE_URL='https://mcxaokbuseavrneybwpu.supabase.co';
+const SUPABASE_KEY='sb_publishable_DVPEu38CIw2HRl7Gow-O-A_3koYpfzW';
 let sb=null,USER=null,PROF=null,GUEST=0;
 try{if(window.supabase&&!SUPABASE_URL.startsWith('COLE'))sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY)}catch(e){console.error(e)}
 const esc=t=>String(t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
