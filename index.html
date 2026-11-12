@@ -46,7 +46,7 @@ const CL=['#7bd88f','#f2a65a','#9ad1f5','#c38cf0','#f0e26a','#f08fb4','#8be0d0',
 const RL={m:'Monstro',k:'Assassino (Alma da Determinação)',d:'Detetive'};
 let S=null;const K={};
 const rnd=a=>a[Math.floor(Math.random()*a.length)];
-const shuf=a=>a.slice().sort(()=>Math.random()-.5);
+const shuf=a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a};
 const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 function roomOf(c){for(const r of R)if(c.x>=r[1]&&c.x<r[1]+r[3]&&c.y>=r[2]&&c.y<r[2]+r[4])return r[0];return 'Corredor'}
 function near(c,l,d){let b=null,m=d;for(const o of l){if(o===c)continue;const k=dist(c,o);if(k<m){m=k;b=o}}return b}
@@ -111,14 +111,19 @@ function backMenu(){if(NET){try{sb.removeChannel(NET.ch)}catch(e){}NET=null}ME=0
 function onlineMenu(msg){
  ov.style.display='block';
  ov.innerHTML=`<h2>Jogar online</h2>${msg?`<div class="l">${esc(msg)}</div>`:''}<p>Um jogador cria a sala e o outro entra com o código de 4 letras.</p>${PROF?'':'<input id="on" placeholder="Seu nome" maxlength="16"><br>'}<button onclick="createRoom()">Criar sala</button><br><input id="oc" placeholder="Código" maxlength="4" style="text-transform:uppercase;width:120px"><button onclick="joinRoom()">Entrar na sala</button><p><button onclick="menu()">Voltar</button></p>`}
+const PREF={r:'🎲 Aleatório',m:'Monstro',k:'Assassino ❤',d:'Detetive 🤠'};
+function prefBtns(){return Object.keys(PREF).map(r=>`<button onclick="setPref('${r}')" style="${NET.pref==r?'background:#e8383d':''}">${PREF[r]}</button>`).join('')}
+function setPref(r){if(!NET||!PREF[r])return;NET.pref=r;if(NET.host)lobby();else{send('pref',{r});guestWait()}}
+function guestWait(){ov.style.display='block';ov.innerHTML=`<h2>Conectado!</h2><p>Você entrou na sala de <b>${esc(NET.hostName||'')}</b>.</p><p>Escolha <b>em segredo</b> o papel que você quer. O outro jogador não vê sua escolha. Se os dois quiserem o mesmo papel, sorteamos.</p>${prefBtns()}<p><small>Aguarde o anfitrião iniciar a partida...</small></p><button onclick="backMenu()">Sair</button>`}
 function lobby(){
- ov.innerHTML=`<h2>Sala ${esc(NET.code)}</h2><p>Passe este código ao seu amigo.</p>`+(NET.peer?`<div class="l">👤 <b>${esc(NET.peer)}</b> entrou na sala!</div><button onclick="startOnline()">Começar partida</button>`:'<p>Aguardando o amigo entrar...</p>')+`<p><button onclick="backMenu()">Cancelar</button></p>`}
+ ov.innerHTML=`<h2>Sala ${esc(NET.code)}</h2><p>Passe este código ao seu amigo.</p>`+(NET.peer?`<div class="l">👤 <b>${esc(NET.peer)}</b> entrou na sala! ${NET.peerPref?'✅ Já escolheu o papel.':'⏳ Ainda não escolheu o papel.'}</div>`:'<p>Aguardando o amigo entrar...</p>')+`<p>Escolha <b>em segredo</b> o seu papel (o amigo não vê):</p>${prefBtns()}`+(NET.peer?`<p><button onclick="startOnline()">Começar partida</button></p>`:'')+`<p><button onclick="backMenu()">Cancelar</button></p>`}
 function createRoom(){
  const name=nameNow(),code=Array.from({length:4},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.floor(Math.random()*24)]).join('');
  const ch=sb.channel('mm_'+code,{config:{broadcast:{self:false}}});
- NET={host:true,code,ch,name,peer:null,lastIn:performance.now(),acc:0};
+ NET={host:true,code,ch,name,peer:null,pref:'r',peerPref:null,lastIn:performance.now(),acc:0};
  bind(ch,{
   join:p=>{if(S)return;NET.peer=cleanName(p.name)||'Amigo';send('welcome',{name:NET.name});lobby()},
+  pref:p=>{if(PREF[p.r]){NET.peerPref=p.r;if(!S)lobby()}},
   in:p=>{NET.lastIn=performance.now();if(S)S.rin={dx:Math.max(-1,Math.min(1,+p.dx||0)),dy:Math.max(-1,Math.min(1,+p.dy||0)),e:p.e?1:0}},
   act:p=>{NET.lastIn=performance.now();if(S&&S.ch[1]&&['r','f',' '].includes(p.k))act(S.ch[1],p.k)},
   vote:p=>{NET.lastIn=performance.now();if(S&&S.meet==1)hostVote(S.ch[1],p.pv,p.cl)}});
@@ -127,9 +132,9 @@ function joinRoom(){
  const name=nameNow(),code=val('oc').trim().toUpperCase();
  if(code.length!=4)return onlineMenu('Digite o código de 4 letras.');
  const ch=sb.channel('mm_'+code,{config:{broadcast:{self:false}}});
- NET={host:false,code,ch,name,lastSnap:performance.now(),acc:0,last:''};
+ NET={host:false,code,ch,name,pref:'r',lastSnap:performance.now(),acc:0,last:''};
  bind(ch,{
-  welcome:p=>{NET.ok=1;clearTimeout(NET.to);ov.innerHTML=`<h2>Conectado!</h2><p>Você entrou na sala de <b>${esc(cleanName(p.name))}</b>. Aguarde o anfitrião iniciar a partida...</p><button onclick="backMenu()">Sair</button>`},
+  welcome:p=>{NET.ok=1;clearTimeout(NET.to);NET.hostName=cleanName(p.name);guestWait()},
   start:initGuest,snap:onSnap,
   toast:p=>{if(S)toast(String(p.t||'').slice(0,120))},
   meet:p=>{if(S&&!S.over){S.meet=1;renderMeet(p)}},
@@ -155,10 +160,15 @@ function startOnline(){
  if(!NET||!NET.host||!NET.peer)return;
  const a=NET.name,b=NET.peer==a?NET.peer+' 2':NET.peer;
  const bots=NM.slice(2).map(n=>(n==a||n==b)?n+' 2':n);
- const ch=mkChars([a,b,...bots],2),r=shuf(ch);r[0].role='k';r[1].role='d';
+ const ch=mkChars([a,b,...bots],2);pickRoles(ch,[NET.pref||'r',NET.peerPref||'r']);
  ME=0;S=newS(ch);spread();ov.style.display='none';NET.lastIn=performance.now();
  send('start',{ch:ch.map(c=>({n:c.n,col:c.col,t:c.t,role:c.role,p:c.p?1:0,x:c.x,y:c.y}))});
  toast(roleMsg(ch[0].role))}
+function pickRoles(ch,prefs){
+ const pf=prefs.slice(),got={},taken=new Set();
+ ['k','d'].forEach(r=>{const w=[0,1].filter(i=>pf[i]==r);if(!w.length)return;const i=rnd(w);got[r]=ch[i];taken.add(ch[i]);w.forEach(j=>{if(j!=i)pf[j]='r'})});
+ ['k','d'].forEach(r=>{if(got[r])return;const el=ch.filter((c,i)=>!taken.has(c)&&!(i<2&&pf[i]=='m'));const c=rnd(el);got[r]=c;taken.add(c)});
+ got.k.role='k';got.d.role='d'}
 function initGuest(p){
  if(!NET||NET.host||!Array.isArray(p.ch)||p.ch.length!=8)return;
  ME=1;
