@@ -300,7 +300,11 @@ function onSnap(p){
  S.prog=+p.pr||0;S.cd=+p.cd||0;if(Array.isArray(p.dn))S.ch[ME].done=p.dn.map(x=>x?1:0);S.hold=+p.hd||0}
 function guestTick(dt){
  S.mt-=dt;
- S.ch.forEach(c=>{if(c.gx!==undefined){const k=Math.min(1,dt*14);c.x+=(c.gx-c.x)*k;c.y+=(c.gy-c.y)*k}});
+ const P=me(),li=localIn(),mvg=!S.meet&&P.alive&&(li.dx||li.dy);
+ if(mvg){const m=Math.hypot(li.dx,li.dy)||1;mv(P,li.dx/m*130*dt,li.dy/m*130*dt)}
+ S.ch.forEach(c=>{if(c.gx===undefined)return;const d=Math.hypot(c.gx-c.x,c.gy-c.y);
+  if(c===P&&mvg){if(d>60){const k=Math.min(1,dt*8);c.x+=(c.gx-c.x)*k;c.y+=(c.gy-c.y)*k}}
+  else{const k=Math.min(1,dt*(c===P?6:14));c.x+=(c.gx-c.x)*k;c.y+=(c.gy-c.y)*k}});
  NET.acc+=dt;const i=localIn(),key=i.dx+','+i.dy+','+i.e;
  if(NET.acc>.05&&(S.meet?NET.acc>.5:(key!=NET.last||NET.acc>.25))){NET.acc=0;NET.last=key;send('in',S.meet?{dx:0,dy:0,e:0}:i)}
  if(performance.now()-NET.lastSnap>12000&&!S.over&&!NET.lost){NET.lost=1;ov.style.display='block';ov.innerHTML='<h2>Conexão perdida</h2><p>O anfitrião não responde.</p><button onclick="backMenu()">Voltar ao menu</button>'}}
@@ -345,14 +349,16 @@ function draw(){
  g.fillStyle='#fff';g.font='11px system-ui';g.fillText('Tarefas',220,19);
  g.fillText('Papel: '+RL[P.role]+(P.role=='k'?(S.cd>0?'  · recarga '+Math.ceil(S.cd)+'s':'  · pronto (Espaço)'):''),10,38);
  let h='';const hd=NET&&!NET.host?S.hold:(P.hold||0);if(hd>0){g.fillStyle='#ffd84d';g.fillRect(340,470,hd/1.5*120,8)}
+ if(NET){g.textAlign='left';g.fillStyle='#9ad1f5';g.fillText(NET.host?'Online · sinal do amigo há '+(((performance.now()-NET.lastIn)/1000)|0)+'s':'Online · sinal do anfitrião há '+(((performance.now()-NET.lastSnap)/1000)|0)+'s',10,74)}
  if(!P.alive){g.textAlign='left';g.fillStyle='#ff6b6b';g.fillText('Você foi eliminado — assistindo como espectador',10,56)}
  if(nearB(P,60))h='R: reportar corpo'+(P.role=='d'?' · F: investigar':'');
  if(S.mt>0){g.fillStyle='#000b';g.fillRect(160,455,480,24);g.fillStyle='#fff';g.textAlign='center';g.fillText(S.msg,400,471)}
  else if(h){g.textAlign='center';g.fillStyle='#fff';g.fillText(h,400,471)}
 }
-function loop(t){const dt=Math.min(.05,(t-(S?S.last:t))/1000);if(S)S.last=t;
+function step(t){const dt=Math.min(.05,(t-(S?S.last:t))/1000);if(S)S.last=t;
  if(S&&NET&&!NET.host)guestTick(dt);else upd(dt);
- if(S&&NET&&NET.host)hostTick(dt);
- draw();requestAnimationFrame(loop)}
+ if(S&&NET&&NET.host)hostTick(dt)}
+function loop(t){step(t);draw();requestAnimationFrame(loop)}
+try{const w=new Worker(URL.createObjectURL(new Blob(['setInterval(()=>postMessage(1),50)'],{type:'text/javascript'})));w.onmessage=()=>{if(document.hidden)step(performance.now())}}catch(e){}
 init();requestAnimationFrame(loop);
 </script></body></html>
