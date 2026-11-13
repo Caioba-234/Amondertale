@@ -98,7 +98,7 @@ function menu(){
  const who=USER?`<div class="l">👤 <b>${esc(PROF?PROF.username:USER.email)}</b> · partidas: ${PROF?PROF.games:0} · vitórias: ${PROF?PROF.wins:0}</div>`:'';
  const extra=USER?`<button onclick="showRank()">Ranking</button><button onclick="logout()">Sair</button>`:(sb?`<button onclick="GUEST=0;authScreen('in')">Entrar / criar conta</button>`:'');
  ov.innerHTML=`<h2>Among Monstros</h2>${who}<p>Uma nave de monstros, uma alma vermelha cheia de determinação e um detetive de chapéu. Quem é o assassino?</p><p>Escolha seu papel:</p>
-<button onclick="start('m')">Monstro (tripulante)</button><button onclick="start('k')">Assassino ❤ Determinação</button><button onclick="start('d')">Detetive 🤠</button>${sb?'<br><button onclick="onlineMenu()">🌐 Jogar online (2 jogadores)</button>':''}<p>${extra}</p>`}
+<button onclick="start('m')">Monstro (tripulante)</button><button onclick="start('k')">Assassino ❤ Determinação</button><button onclick="start('d')">Detetive 🤠</button>${sb?'<br><button onclick="onlineMenu()">🌐 Jogar online (2 a 5 jogadores)</button>':''}<p>${extra}</p>`}
 // ===== ONLINE (Supabase Realtime) =====
 let NET=null,ME=0;
 const me=()=>S.ch[ME];
@@ -107,42 +107,58 @@ const okCol=c=>/^#[0-9a-f]{6}$/i.test(c)?c:'#cccccc';
 function send(ev,pl){if(NET&&NET.ch)Promise.resolve(NET.ch.send({type:'broadcast',event:ev,payload:pl||{}})).catch(()=>{})}
 function bind(ch,map){for(const ev in map)ch.on('broadcast',{event:ev},m=>{try{map[ev](m.payload||{})}catch(e){console.error(e)}})}
 function nameNow(){const e=document.getElementById('on');return cleanName(PROF?PROF.username:(e&&e.value)||(USER?USER.email.split('@')[0]:''))||'Jogador'}
-function backMenu(){if(NET){try{sb.removeChannel(NET.ch)}catch(e){}NET=null}ME=0;S=null;menu()}
+function backMenu(){if(NET){if(!NET.host)send('leave',{id:NET.id});try{sb.removeChannel(NET.ch)}catch(e){}NET=null}ME=0;S=null;menu()}
 function onlineMenu(msg){
  ov.style.display='block';
- ov.innerHTML=`<h2>Jogar online</h2>${msg?`<div class="l">${esc(msg)}</div>`:''}<p>Um jogador cria a sala e o outro entra com o código de 4 letras.</p>${PROF?'':'<input id="on" placeholder="Seu nome" maxlength="16"><br>'}<button onclick="createRoom()">Criar sala</button><br><input id="oc" placeholder="Código" maxlength="4" style="text-transform:uppercase;width:120px"><button onclick="joinRoom()">Entrar na sala</button><p><button onclick="menu()">Voltar</button></p>`}
+ ov.innerHTML=`<h2>Jogar online</h2>${msg?`<div class="l">${esc(msg)}</div>`:''}<p>Um jogador cria a sala (de 2 a 5 jogadores) e os outros entram com o código de 4 letras.</p>${PROF?'':'<input id="on" placeholder="Seu nome" maxlength="16"><br>'}<button onclick="createRoom()">Criar sala</button><br><input id="oc" placeholder="Código" maxlength="4" style="text-transform:uppercase;width:120px"><button onclick="joinRoom()">Entrar na sala</button><p><button onclick="menu()">Voltar</button></p>`}
 const PREF={r:'🎲 Aleatório',m:'Monstro',k:'Assassino ❤',d:'Detetive 🤠'};
+const MAXP=5;
 function prefBtns(){return Object.keys(PREF).map(r=>`<button onclick="setPref('${r}')" style="${NET.pref==r?'background:#e8383d':''}">${PREF[r]}</button>`).join('')}
-function setPref(r){if(!NET||!PREF[r])return;NET.pref=r;if(NET.host)lobby();else{send('pref',{r});guestWait()}}
-function guestWait(){ov.style.display='block';ov.innerHTML=`<h2>Conectado!</h2><p>Você entrou na sala de <b>${esc(NET.hostName||'')}</b>.</p><p>Escolha <b>em segredo</b> o papel que você quer. O outro jogador não vê sua escolha. Se os dois quiserem o mesmo papel, sorteamos.</p>${prefBtns()}<p><small>Aguarde o anfitrião iniciar a partida...</small></p><button onclick="backMenu()">Sair</button>`}
-function lobby(){
- ov.innerHTML=`<h2>Sala ${esc(NET.code)}</h2><p>Passe este código ao seu amigo.</p>`+(NET.peer?`<div class="l">👤 <b>${esc(NET.peer)}</b> entrou na sala! ${NET.peerPref?'✅ Já escolheu o papel.':'⏳ Ainda não escolheu o papel.'}</div>`:'<p>Aguardando o amigo entrar...</p>')+`<p>Escolha <b>em segredo</b> o seu papel (o amigo não vê):</p>${prefBtns()}`+(NET.peer?`<p><button onclick="startOnline()">Começar partida</button></p>`:'')+`<p><button onclick="backMenu()">Cancelar</button></p>`}
+function setPref(r){if(!NET||!PREF[r])return;NET.pref=r;if(NET.host){NET.hostReady=1;lobby();bcastLobby()}else{send('pref',{id:NET.id,r});guestWait()}}
+function plist(){const L=[{n:NET.name,r:!!NET.hostReady}];Object.values(NET.peers).sort((a,b)=>a.slot-b.slot).forEach(q=>L.push({n:q.name,r:!!q.pref}));return L}
+function bcastLobby(){send('lobby',{list:plist()})}
+function listHtml(L){return L.map((q,i)=>`<div class="l">${i?'👤':'👑'} <b>${esc(q.n)}</b> ${q.r?'✅ escolheu o papel':'⏳ escolhendo...'}</div>`).join('')}
+function guestWait(){ov.style.display='block';ov.innerHTML=`<h2>Sala ${esc(NET.code)}</h2><p>Escolha <b>em segredo</b> o papel que você quer. Os outros não veem a sua escolha. Se houver conflito, sorteamos.</p>${prefBtns()}<p>Jogadores na sala:</p>${listHtml(NET.list||[])}<p><small>Aguarde o anfitrião iniciar a partida...</small></p><button onclick="backMenu()">Sair</button>`}
+function lobby(){const n=Object.keys(NET.peers).length;
+ ov.innerHTML=`<h2>Sala ${esc(NET.code)}</h2><p>Passe este código aos seus amigos (de 2 a ${MAXP} jogadores).</p>${listHtml(plist())}<p>Escolha <b>em segredo</b> o seu papel:</p>${prefBtns()}`+(n?`<p><button onclick="startOnline()">Começar partida (${n+1} jogadores)</button></p>`:'<p><small>Aguardando pelo menos 1 amigo entrar...</small></p>')+`<p><button onclick="backMenu()">Cancelar</button></p>`}
 function createRoom(){
  const name=nameNow(),code=Array.from({length:4},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.floor(Math.random()*24)]).join('');
  const ch=sb.channel('mm_'+code,{config:{broadcast:{self:false}}});
- NET={host:true,code,ch,name,peer:null,pref:'r',peerPref:null,lastIn:performance.now(),acc:0};
+ NET={host:true,code,ch,name,peers:{},pref:'r',hostReady:0,idx:null,lastIn:{},n:1,acc:0};
+ const slotOf=id=>NET.idx?NET.idx[id]:undefined;
  bind(ch,{
-  join:p=>{if(S)return;NET.peer=cleanName(p.name)||'Amigo';send('welcome',{name:NET.name});lobby()},
-  pref:p=>{if(PREF[p.r]){NET.peerPref=p.r;if(!S)lobby()}},
-  in:p=>{NET.lastIn=performance.now();if(S)S.rin={dx:Math.max(-1,Math.min(1,+p.dx||0)),dy:Math.max(-1,Math.min(1,+p.dy||0)),e:p.e?1:0}},
-  act:p=>{NET.lastIn=performance.now();if(S&&S.ch[1]&&['r','f',' '].includes(p.k))act(S.ch[1],p.k)},
-  vote:p=>{NET.lastIn=performance.now();if(S&&S.meet==1)hostVote(S.ch[1],p.pv,p.cl)}});
+  join:p=>{if(S||typeof p.id!='string'||p.id.length>20)return;
+   let q=NET.peers[p.id];
+   if(!q){if(Object.keys(NET.peers).length>=MAXP-1)return send('full',{id:p.id});
+    const used=Object.values(NET.peers).map(x=>x.slot);let sl=1;while(used.includes(sl))sl++;
+    q=NET.peers[p.id]={slot:sl,name:'',pref:null}}
+   q.name=cleanName(p.name)||'Amigo';
+   send('welcome',{id:p.id,name:NET.name});lobby();bcastLobby()},
+  say:p=>{const i=slotOf(p.id);if(i===undefined)return;NET.lastIn[i]=performance.now();if(S&&S.meet==1&&S.ch[i]&&typeof p.t=='string')chatMsg(S.ch[i],p.t)},
+  leave:p=>{if(!S&&NET.peers[p.id]){delete NET.peers[p.id];lobby();bcastLobby()}},
+  pref:p=>{const q=NET.peers[p.id];if(q&&PREF[p.r]){q.pref=p.r;if(!S){lobby();bcastLobby()}}},
+  in:p=>{const i=slotOf(p.id);if(i===undefined||!S)return;NET.lastIn[i]=performance.now();S.rin=S.rin||{};S.rin[i]={dx:Math.max(-1,Math.min(1,+p.dx||0)),dy:Math.max(-1,Math.min(1,+p.dy||0)),e:p.e?1:0}},
+  act:p=>{const i=slotOf(p.id);if(i===undefined)return;NET.lastIn[i]=performance.now();if(S&&S.ch[i]&&['r','f',' '].includes(p.k))act(S.ch[i],p.k)},
+  vote:p=>{const i=slotOf(p.id);if(i===undefined)return;NET.lastIn[i]=performance.now();if(S&&S.meet==1)hostVote(S.ch[i],p.pv,p.cl)}});
  ch.subscribe(st=>{if(st=='SUBSCRIBED')lobby();else if(st=='CHANNEL_ERROR'||st=='TIMED_OUT'){backMenu();onlineMenu('Falha ao conectar ao Realtime do Supabase.')}})}
 function joinRoom(){
  const name=nameNow(),code=val('oc').trim().toUpperCase();
  if(code.length!=4)return onlineMenu('Digite o código de 4 letras.');
  const ch=sb.channel('mm_'+code,{config:{broadcast:{self:false}}});
- NET={host:false,code,ch,name,pref:'r',lastSnap:performance.now(),acc:0,last:''};
+ NET={host:false,code,ch,name,id:Math.random().toString(36).slice(2,10),pref:'r',lastSnap:performance.now(),acc:0,last:'',list:[]};
  bind(ch,{
-  welcome:p=>{NET.ok=1;clearTimeout(NET.to);NET.hostName=cleanName(p.name);guestWait()},
+  welcome:p=>{if(!NET||p.id!==NET.id)return;NET.ok=1;clearTimeout(NET.to);NET.hostName=cleanName(p.name);guestWait()},
+  full:p=>{if(!NET||p.id!==NET.id)return;clearTimeout(NET.to);backMenu();onlineMenu('A sala está cheia (máximo de '+MAXP+' jogadores).')},
+  lobby:p=>{if(!NET||S)return;NET.list=(Array.isArray(p.list)?p.list:[]).slice(0,MAXP).map(q=>({n:cleanName(q.n),r:!!q.r}));if(NET.ok)guestWait()},
   start:initGuest,snap:onSnap,
-  toast:p=>{if(S)toast(String(p.t||'').slice(0,120))},
-  meet:p=>{if(S&&!S.over){S.meet=1;renderMeet(p)}},
+  toast:p=>{if(S&&p.to===ME)toast(String(p.t||'').slice(0,120))},
+  meet:p=>{if(S&&!S.over&&p.to===ME){S.meet=1;renderMeet(p)}},
+  chat:p=>{if(S&&S.meet==1&&typeof p.t=='string')appendChat({n:cleanName(p.n),col:okCol(p.col),t:String(p.t).slice(0,120),d:p.d?1:0})},
   res:p=>{if(S&&Array.isArray(p.out))renderRes({out:p.out,tally:p.tally,cont:false})},
   resume:()=>{if(S&&!S.over){S.meet=0;S.bodies=[];ov.style.display='none'}},
   end:p=>{if(S)showEnd(!!p.c,String(p.t||''))}});
  ch.subscribe(st=>{
-  if(st=='SUBSCRIBED'){send('join',{name});NET.to=setTimeout(()=>{if(NET&&!NET.ok){backMenu();onlineMenu('Sala não encontrada ou o anfitrião não respondeu.')}},6000)}
+  if(st=='SUBSCRIBED'){send('join',{id:NET.id,name});NET.to=setTimeout(()=>{if(NET&&!NET.ok){backMenu();onlineMenu('Sala não encontrada ou o anfitrião não respondeu.')}},6000)}
   else if(st=='CHANNEL_ERROR'||st=='TIMED_OUT'){backMenu();onlineMenu('Falha ao conectar ao Realtime do Supabase.')}})}
 
 // ===== PARTIDA =====
@@ -157,26 +173,29 @@ function start(role){
  else{ai[0].role='k';ai[1].role='d'}
  S=newS(ch);spread();ov.style.display='none';toast(roleMsg(ch[0].role))}
 function startOnline(){
- if(!NET||!NET.host||!NET.peer)return;
- const a=NET.name,b=NET.peer==a?NET.peer+' 2':NET.peer;
- const bots=NM.slice(2).map(n=>(n==a||n==b)?n+' 2':n);
- const ch=mkChars([a,b,...bots],2);pickRoles(ch,[NET.pref||'r',NET.peerPref||'r']);
- ME=0;S=newS(ch);spread();ov.style.display='none';NET.lastIn=performance.now();
- send('start',{ch:ch.map(c=>({n:c.n,col:c.col,t:c.t,role:c.role,p:c.p?1:0,x:c.x,y:c.y}))});
+ if(!NET||!NET.host||S)return;
+ const ps=Object.entries(NET.peers).sort((a,b)=>a[1].slot-b[1].slot);if(!ps.length)return;
+ const nh=ps.length+1,prefs=[NET.pref||'r',...ps.map(e=>e[1].pref||'r')];
+ const used=new Set(),u=n=>{let k=n,c=2;while(used.has(k))k=n+' '+c++;used.add(k);return k};
+ const names=[NET.name,...ps.map(e=>e[1].name)].map(u).concat(NM.slice(1,9-nh).map(u));
+ const ch=mkChars(names,nh);pickRoles(ch,prefs);
+ NET.idx={};ps.forEach((e,i)=>NET.idx[e[0]]=i+1);NET.n=nh;NET.lastIn={};for(let i=1;i<nh;i++)NET.lastIn[i]=performance.now();
+ ME=0;S=newS(ch);S.rin={};spread();ov.style.display='none';
+ send('start',{ch:ch.map(c=>({n:c.n,col:c.col,t:c.t,role:c.role,p:c.p?1:0,x:c.x,y:c.y})),slots:NET.idx});
  toast(roleMsg(ch[0].role))}
 function pickRoles(ch,prefs){
- const pf=prefs.slice(),got={},taken=new Set();
- ['k','d'].forEach(r=>{const w=[0,1].filter(i=>pf[i]==r);if(!w.length)return;const i=rnd(w);got[r]=ch[i];taken.add(ch[i]);w.forEach(j=>{if(j!=i)pf[j]='r'})});
- ['k','d'].forEach(r=>{if(got[r])return;const el=ch.filter((c,i)=>!taken.has(c)&&!(i<2&&pf[i]=='m'));const c=rnd(el);got[r]=c;taken.add(c)});
+ const pf=prefs.slice(),n=pf.length,got={},taken=new Set();
+ ['k','d'].forEach(r=>{const w=[];pf.forEach((x,i)=>{if(x==r)w.push(i)});if(!w.length)return;const i=rnd(w);got[r]=ch[i];taken.add(ch[i]);w.forEach(j=>{if(j!=i)pf[j]='r'})});
+ ['k','d'].forEach(r=>{if(got[r])return;const el=ch.filter((c,i)=>!taken.has(c)&&!(i<n&&pf[i]=='m'));const c=rnd(el);got[r]=c;taken.add(c)});
  got.k.role='k';got.d.role='d'}
 function initGuest(p){
  if(!NET||NET.host||!Array.isArray(p.ch)||p.ch.length!=8)return;
- ME=1;
+ const mi=p.slots&&Number.isInteger(p.slots[NET.id])?p.slots[NET.id]:-1;if(mi<1||mi>4)return;ME=mi;
  const ch=p.ch.map((c,i)=>({n:cleanName(c.n)||'?',col:okCol(c.col),t:(c.t|0)%8,role:['m','k','d'].includes(c.role)?c.role:'m',p:!!c.p,x:+c.x||800,y:+c.y||500,gx:+c.x||800,gy:+c.y||500,alive:1,done:ST.map(()=>0)}));
- S=newS(ch);ov.style.display='none';NET.lastSnap=performance.now();toast(roleMsg(ch[1].role))}
+ S=newS(ch);ov.style.display='none';NET.lastSnap=performance.now();toast(roleMsg(ch[ME].role))}
 function spread(){const al=S.ch.filter(c=>c.alive);al.forEach((c,i)=>{const a=i*6.283/al.length;c.x=800+Math.cos(a)*45;c.y=500+Math.sin(a)*45;c.tx=null;c.w=1})}
 function toast(t){S.msg=t;S.mt=5}
-function say(h,t){if(h===me())toast(t);else if(NET&&NET.host)send('toast',{t})}
+function say(h,t){if(h===me())toast(t);else if(NET&&NET.host)send('toast',{to:S.ch.indexOf(h),t})}
 function crewN(){return S.ch.filter(c=>c.alive&&c.role!='k').length}
 function mkClue(){const k=S.ch.find(c=>c.role=='k');const d=shuf(S.ch.filter(c=>c.alive&&c.role=='m'&&c!==k)).slice(0,2);S.clue=shuf([k,...d]).map(c=>c.n)}
 function kill(k,v){v.alive=0;S.bodies.push({x:v.x,y:v.y,n:v.n,col:v.col,t:v.t,hat:v.role=='d',age:0});S.cd=14;S.imp=0;
@@ -189,67 +208,94 @@ function showEnd(crewWin,txt){S.over=1;const P=me();const win=P.role=='k'?!crewW
 
 // ===== REUNIÃO =====
 function mdata(h){const al=S.ch.filter(c=>c.alive);
- const o={rep:S.mrep,lines:S.mlines,role:h.role,alive:!!h.alive,clue:h.role=='d'&&S.clue?S.clue:null};
+ const o={rep:S.mrep,lines:S.mlines,role:h.role,alive:!!h.alive,clue:h.role=='d'&&S.clue?S.clue:null,chat:S.chat.slice(-30)};
  if(h.alive){o.seen=Object.entries(h.seen||{}).filter(e=>S.time-e[1].t<40&&S.ch.find(c=>c.n==e[0])&&S.ch.find(c=>c.n==e[0]).alive).map(e=>`${e[0]} (${e[1].room})`).join(', ');
-  o.room=roomOf(h);o.opts=al.filter(c=>c!==h).map(c=>[S.ch.indexOf(c),c.n])}
+  o.opts=al.filter(c=>c!==h).map(c=>[S.ch.indexOf(c),c.n])}
  return o}
+function appendChat(m){
+ const c=document.getElementById('chat');if(!c)return;
+ const d=document.createElement('div');d.className='l';d.style.borderLeft='6px solid '+okCol(m.col);
+ const b=document.createElement('b');b.textContent=String(m.n)+(m.d?' 🤠':'')+': ';d.appendChild(b);d.appendChild(document.createTextNode(String(m.t)));
+ c.appendChild(d);c.scrollTop=c.scrollHeight}
 function renderMeet(o){
  ov.style.display='block';
  let h=`<h2>Reunião de emergência</h2><div class="l"><b>${esc(o.rep)}</b> encontrou um corpo!</div>`+(Array.isArray(o.lines)?o.lines:[]).map(l=>`<div class="l" style="border-left:6px solid ${esc(okCol(l.col))}"><b>${esc(l.n)}${l.d?' 🤠':''}:</b> ${esc(l.t)}</div>`).join('');
  if(o.role=='d')h+=`<div class="l"><b>Sua pista:</b> ${Array.isArray(o.clue)?esc(o.clue.join(', ')):'nenhuma ainda'}</div>`;
- if(!o.alive)h+='<p>Você foi eliminado. Aguarde o resultado da votação.</p>';
+ h+=`<p><b>Chat da reunião</b></p><div id="chat" style="max-height:170px;overflow-y:auto"></div>`;
+ if(!o.alive)h+='<p>Você foi eliminado. Pode acompanhar o chat enquanto os outros votam.</p>';
  else{const op=Array.isArray(o.opts)?o.opts:[];
-  h+=`<div class="l"><b>Você viu há pouco:</b> ${esc(o.seen||'ninguém')}</div><div class="l"><b>Sua declaração:</b><br>Eu estava em <select id="cr">${R.map(r=>r[0]).concat('Corredor').map(n=>`<option${n==o.room?' selected':''}>${n}</option>`).join('')}</select> <select id="ca"><option>fazendo tarefas</option><option>andando pelo mapa</option><option>procurando pistas</option><option>escondido</option></select><br>Acho que foi <select id="cs"><option value="">ninguém em especial</option>${op.map(a=>`<option value="${a[0]|0}">${esc(a[1])}</option>`).join('')}</select></div><p>Em quem você vota?</p>`+op.map(a=>`<button onclick="vote(${a[0]|0})">${esc(a[1])}</button>`).join('')+`<button onclick="vote(-1)">Pular</button>`}
- ov.innerHTML=h}
+  h+=`<div class="l"><b>Você viu há pouco:</b> ${esc(o.seen||'ninguém')}</div><div><input id="ci" maxlength="120" placeholder="Diga onde estava, em quem desconfia..." onkeydown="if(event.key==='Enter')sendChat()" style="width:min(380px,70%)"><button onclick="sendChat()">Enviar</button></div><p>Em quem você vota?</p><div id="vb">`+op.map(a=>`<button onclick="vote(${a[0]|0})">${esc(a[1])}</button>`).join('')+`<button onclick="vote(-1)">Pular</button></div>`}
+ ov.innerHTML=h;(Array.isArray(o.chat)?o.chat:[]).forEach(appendChat)}
 function renderRes(o){
  ov.style.display='block';
  ov.innerHTML=`<h2>Resultado da votação</h2><p>${o.out.map(esc).join('<br>')}</p><small>${esc(o.tally||'')}</small>`+(o.cont?'<p><button onclick="resume()">Continuar</button></p>':'<p><small>Voltando ao jogo em instantes...</small></p>')}
+const norm=t=>String(t).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+function parseClaim(h,text){const t=norm(text),o={};
+ if(/estav|estiv|fui|passei|tava|cheg|vim |ficava|andava|andei/.test(t)){const r=R.map(x=>x[0]).concat('Corredor').find(n=>t.includes(norm(n)));if(r)o.room=r}
+ if(/acho|suspeit|foi |culpad|matou|assassin|desconfi|mentir|mentiu|vot|vamos|e o |eh o /.test(t)){const a=S.ch.find(c=>c.alive&&c!==h&&t.includes(norm(c.n)));if(a)o.acc=a.n}
+ return o}
+function chatPost(m){S.chat.push(m);if(S.chat.length>40)S.chat.shift();appendChat(m);if(NET)send('chat',{n:m.n,col:m.col,t:m.t,d:m.d?1:0})}
+function chatMsg(h,text){
+ if(!S||S.meet!=1||!h.alive)return;const now=performance.now();if(now-(h.lc||-1e9)<700)return;h.lc=now;
+ text=String(text).replace(/[\u0000-\u001f]/g,' ').trim().slice(0,120);if(!text)return;
+ chatPost({n:h.n,col:h.col,t:text,d:h.role=='d'?1:0});
+ const idx=S.ch.indexOf(h),cl=S.claims[idx]=S.claims[idx]||{},pc=parseClaim(h,text);
+ if(pc.room)cl.room=pc.room;if(pc.acc)cl.acc=pc.acc;
+ botReact(h,pc)}
+function botReact(h,pc){
+ let n=0;
+ for(const c of shuf(S.ch.filter(x=>x.alive&&!x.p))){if(n>=2)break;let t=null;
+  const sp=c.seen&&c.seen[h.n],recent=sp&&S.time-sp.t<60;
+  const honest=pc.room?S.time-(h.vis&&h.vis[pc.room]!==undefined?h.vis[pc.room]:-999)<45:true;
+  if(pc.room&&recent&&sp.room!=pc.room&&!honest&&S.time-sp.t<30&&Math.random()<.8)t=`Mentira! Eu vi ${h.n} em ${sp.room}.`;
+  else if(pc.room&&recent&&sp.room==pc.room&&Math.random()<.5)t=`Confirmo, vi ${h.n} em ${sp.room}.`;
+  else if(pc.acc&&pc.acc==c.n)t=c.role=='k'?`Eu?! Quem está agindo estranho é ${h.n}!`:'Eu?! Não fui eu, eu estava fazendo tarefas!';
+  else if(pc.acc&&Math.random()<.3+(h.role=='d'?.3:0))t=`Concordo com ${h.n}, também desconfio de ${pc.acc}.`;
+  if(t){n++;const m={n:c.n,col:c.col,t,d:c.role=='d'?1:0};setTimeout(()=>{if(S&&S.meet==1)chatPost(m)},700+Math.random()*1800)}}}
 function meet(rep){
- S.meet=1;S.votes={};if(rep.role=='d')mkClue();
+ S.meet=1;S.votes={};S.chat=[];S.claims={};if(rep.role=='d')mkClue();
  const al=S.ch.filter(c=>c.alive);S.mrep=rep.n;S.mlines=[];
  al.forEach(c=>{if(c.p)return;const o=rnd(al.filter(x=>x!==c&&x.role!='d'))||c;let t;
   if(c.role=='d'&&S.clue)t=`Pista: o assassino é ${S.clue.join(', ')}, um destes três.`;
   else if(c.role=='k')t=Math.random()<.5?`Foi o ${o.n}! Vi ele agindo estranho em ${roomOf(o)}.`:`Eu estava em ${rnd(R)[0]} fazendo tarefas.`;
   else t=Math.random()<.4?`Desconfio do ${o.n}.`:`Eu estava em ${roomOf(c)} fazendo tarefas.`;
   S.mlines.push({n:c.n,col:c.col,d:c.role=='d',t})});
- S.ch.filter(c=>c.p).forEach(h=>{const d=mdata(h);if(h===me())renderMeet(d);else send('meet',d)});
+ S.ch.filter(c=>c.p).forEach(h=>{const d=mdata(h);if(h===me())renderMeet(d);else send('meet',{...d,to:S.ch.indexOf(h)})});
  clearTimeout(S.mto);
  if(!S.ch.some(c=>c.p&&c.alive))return finishVote();
  if(NET)S.mto=setTimeout(finishVote,45000)}
+function sendChat(){
+ const e=document.getElementById('ci');if(!e)return;const t=String(e.value).trim().slice(0,120);if(!t)return;e.value='';
+ if(!S||S.meet!=1||!me().alive)return;
+ if(NET&&!NET.host)send('say',{id:NET.id,t});else chatMsg(me(),t)}
 function vote(i){
- const q=id=>{const e=document.getElementById(id);return e?e.value:''},cl={room:q('cr'),act:q('ca'),acc:q('cs')};
- ov.innerHTML='<h2>Voto registrado</h2><p>Aguardando os outros jogadores...</p>';
- if(NET&&!NET.host)send('vote',{pv:i,cl});else hostVote(me(),i,cl)}
-function hostVote(h,pv,cl){
+ const b=document.getElementById('vb');if(b)b.innerHTML='<p>✅ Voto registrado. Aguardando os outros jogadores...</p>';
+ if(NET&&!NET.host)send('vote',{id:NET.id,pv:i});else hostVote(me(),i)}
+function hostVote(h,pv){
  if(!S||S.meet!=1||!h||!h.alive)return;
- const rooms=R.map(r=>r[0]).concat('Corredor'),acts=['fazendo tarefas','andando pelo mapa','procurando pistas','escondido'];
- cl=cl||{};cl={room:rooms.includes(cl.room)?cl.room:'Corredor',act:acts.includes(cl.act)?cl.act:acts[0],acc:/^\d+$/.test(String(cl.acc))?String(cl.acc):''};
- S.votes[S.ch.indexOf(h)]={pv:Number.isInteger(pv)?pv:-1,cl};
+ S.votes[S.ch.indexOf(h)]={pv:Number.isInteger(pv)?pv:-1};
  if(S.ch.filter(c=>c.p&&c.alive).every(c=>S.votes[S.ch.indexOf(c)]))finishVote()}
 function finishVote(){
  if(!S||S.meet!=1)return;S.meet=2;clearTimeout(S.mto);
  const al=S.ch.filter(c=>c.alive),cnt={},add=n=>{if(n)cnt[n]=(cnt[n]||0)+1},re=[],claims=[];
  const kn=al.find(c=>c.role=='k').n;
- al.forEach(h=>{if(!h.p)return;const v=S.votes[S.ch.indexOf(h)];if(!v)return;
-  const t=S.ch[v.pv];if(t&&t.alive&&t!==h)add(t.n);
-  const a=v.cl.acc===''?null:S.ch[+v.cl.acc];
-  claims.push({h,room:v.cl.room,act:v.cl.act,acc:a&&a.alive&&a!==h?a.n:'',honest:S.time-(h.vis&&h.vis[v.cl.room]!==undefined?h.vis[v.cl.room]:-999)<45})});
+ al.forEach(h=>{if(!h.p)return;const v=S.votes[S.ch.indexOf(h)];
+  if(v){const t=S.ch[v.pv];if(t&&t.alive&&t!==h)add(t.n)}
+  const cl=S.claims[S.ch.indexOf(h)]||{};
+  claims.push({h,room:cl.room||null,act:'',acc:cl.acc&&al.some(c=>c.n==cl.acc&&c!==h)?cl.acc:'',honest:cl.room?S.time-(h.vis&&h.vis[cl.room]!==undefined?h.vis[cl.room]:-999)<45:true})});
  const wpick=w=>{const e=Object.entries(w).filter(x=>x[1]>0),t=e.reduce((s,x)=>s+x[1],0);if(Math.random()<.1||!t)return '';let r=Math.random()*t;for(const x of e){r-=x[1];if(r<=0)return x[0]}return e[0][0]};
  al.forEach(c=>{if(c.p)return;const pool=al.filter(x=>x!==c).map(x=>x.n),w={};pool.forEach(n=>w[n]=1);
   if(c.role=='k'){claims.forEach(q=>{if(q.acc&&w[q.acc]!==undefined)w[q.acc]+=4;if(q.acc==c.n){w[q.h.n]+=5;re.push(`${c.n}: Eu?! Quem está agindo estranho é ${q.h.n}!`)}})}
   else{if(S.clue)S.clue.forEach(n=>{if(w[n]!==undefined)w[n]+=n==kn?(c.role=='d'?6:4):2});
    claims.forEach(q=>{const P=q.h;
-    if(q.act=='escondido')w[P.n]+=1.5;
     const sp=c.seen&&c.seen[P.n];
-    if(sp&&S.time-sp.t<60){if(sp.room!=q.room){if(!q.honest&&S.time-sp.t<30){w[P.n]+=4;re.push(`${c.n}: Mentira! Eu vi ${P.n} em ${sp.room}.`)}}else{w[P.n]=Math.max(.2,w[P.n]-.6);if(Math.random()<.4)re.push(`${c.n}: Confirmo, vi ${P.n} em ${sp.room}.`)}}
+    if(q.room&&sp&&S.time-sp.t<60){if(sp.room!=q.room){if(!q.honest&&S.time-sp.t<30){w[P.n]+=4;re.push(`${c.n}: Mentira! Eu vi ${P.n} em ${sp.room}.`)}}else{w[P.n]=Math.max(.2,w[P.n]-.6);if(Math.random()<.4)re.push(`${c.n}: Confirmo, vi ${P.n} em ${sp.room}.`)}}
     if(q.acc&&q.acc!=c.n&&w[q.acc]!==undefined&&Math.random()<.3+(P.role=='d'?.3:0)){w[q.acc]+=4;re.push(`${c.n}: Concordo com ${P.n}, também desconfio de ${q.acc}.`)}})}
   add(wpick(w))});
  const e=Object.entries(cnt).sort((a,b)=>b[1]-a[1]),lines=[];let x=null;
  if(e.length&&(e.length==1||e[0][1]>e[1][1])){x=S.ch.find(c=>c.n==e[0][0]);x.alive=0;
   lines.push(`${x.n} foi ejetado com ${e[0][1]} votos. ${x.role=='k'?'Era o assassino com a alma da Determinação!':'Não era o assassino...'}`)}
  else lines.push('Ninguém foi ejetado (empate ou pulo).');
- claims.forEach(q=>lines.push(`${q.h.n}: estava em ${q.room}, ${q.act}.${q.acc?' Acha que foi '+q.acc+'.':''}`));
- re.forEach(r=>lines.push(r));
  const tally=e.map(a=>`${a[0]}: ${a[1]}`).join(' · ')||'sem votos';
  if(x&&x.role=='k')return end(true,lines.join('\n'));
  if(x&&x.p&&!NET)return end(false,lines.join('\n'));
@@ -263,7 +309,7 @@ addEventListener('keydown',e=>{if(/INPUT|SELECT/.test(e.target.tagName))return;c
 addEventListener('keyup',e=>K[e.key.toLowerCase()]=0);
 const localIn=()=>({dx:(K.d||K.arrowright?1:0)-(K.a||K.arrowleft?1:0),dy:(K.s||K.arrowdown?1:0)-(K.w||K.arrowup?1:0),e:K.e?1:0});
 function once(k){if(!S||S.over||S.meet)return;
- if(NET&&!NET.host){if(k==' '||k=='r'||k=='f')send('act',{k});return}
+ if(NET&&!NET.host){if(k==' '||k=='r'||k=='f')send('act',{id:NET.id,k});return}
  act(me(),k)}
 function act(P,k){if(!S||S.over||S.meet||!P||!P.alive)return;
  if(k==' '&&P.role=='k'&&S.cd<=0){const v=near(P,S.ch.filter(c=>c.alive&&roomIdx(c)==roomIdx(P)),48);if(v)kill(P,v)}
@@ -274,9 +320,9 @@ function act(P,k){if(!S||S.over||S.meet||!P||!P.alive)return;
 function upd(dt){
  if(!S||S.over||S.meet)return;
  S.mt-=dt;S.cd-=dt;if(S.cd<=0)S.imp+=dt;S.time+=dt;
- if(NET&&NET.host&&S.ch[1].p&&performance.now()-NET.lastIn>12000){S.ch[1].p=false;toast('Seu amigo desconectou. O personagem dele virou um bot.')}
+ if(NET&&NET.host)S.ch.forEach((h,i)=>{if(i>0&&i<NET.n&&h.p&&performance.now()-NET.lastIn[i]>12000){h.p=false;toast(h.n+' desconectou. O personagem virou um bot.')}});
  S.ch.forEach(h=>{if(!h.p||!h.alive)return;
-  const inp=h===me()?localIn():(S.rin||{dx:0,dy:0,e:0}),m=Math.hypot(inp.dx,inp.dy)||1;
+  const inp=h===me()?localIn():((S.rin&&S.rin[S.ch.indexOf(h)])||{dx:0,dy:0,e:0}),m=Math.hypot(inp.dx,inp.dy)||1;
   mv(h,inp.dx/m*130*dt,inp.dy/m*130*dt);
   let at=-1;ST.forEach((s,i)=>{if(!h.done[i]&&Math.hypot(h.x-s[0],h.y-s[1])<38)at=i});
   if(inp.e&&at>=0&&h.role!='k'){h.hold+=dt;if(h.hold>=1.5){h.done[at]=1;h.hold=0;say(h,'Tarefa concluída!')}}else h.hold=0;
@@ -284,7 +330,7 @@ function upd(dt){
  const al=S.ch.filter(c=>c.alive);
  for(const c of al){c.seen=c.seen||{};for(const o of al)if(o!==c&&roomIdx(o)==roomIdx(c)&&dist(o,c)<220)c.seen[o.n]={room:roomOf(o),t:S.time}}
  const nk=S.ch.filter(c=>c.p&&c.alive&&c.role!='k'),pS=S.ch.some(c=>c.p&&c.role!='k')?60:0,aS=100-pS,all=nk.length>0&&nk.every(h=>h.done.every(x=>x));
- S.ai=Math.min(aS,S.ai+dt*aS/160*(al.filter(c=>!c.p&&c.role!='k').length/S.ai0)*(all?3:1));
+ const nb=al.filter(c=>!c.p&&c.role!='k').length;S.ai=nb?Math.min(aS,S.ai+dt*aS/160*(nb/S.ai0)*(all?3:1)):aS;
  const hp=S.ch.filter(c=>c.p&&c.role!='k');
  S.prog=(hp.length?hp.reduce((t,h)=>t+(h.alive?h.done.filter(x=>x).length/ST.length:1),0)/hp.length*pS:0)+S.ai;
  if(S.prog>=99.9)return end(true,'Os monstros concluíram todas as tarefas!');
@@ -301,13 +347,13 @@ function upd(dt){
  for(const b of S.bodies){b.age+=dt;if(b.age<20)continue;const r=near(b,al.filter(c=>!c.p&&c.role!='k'&&roomIdx(c)==roomIdx(b)),50);if(r){return meet(r)}}
 }
 function hostTick(dt){
- NET.acc+=dt;if(NET.acc<.083)return;NET.acc=0;const g1=S.ch[1];
- send('snap',{ch:S.ch.map(c=>[Math.round(c.x),Math.round(c.y),c.alive?1:0]),bd:S.bodies.map(b=>[Math.round(b.x),Math.round(b.y),b.n,b.col,b.t,b.hat?1:0]),pr:S.prog,cd:S.cd,dn:g1.done,hd:g1.hold||0})}
+ NET.acc+=dt;if(NET.acc<.083)return;NET.acc=0;const hu=S.ch.slice(0,NET.n);
+ send('snap',{ch:S.ch.map(c=>[Math.round(c.x),Math.round(c.y),c.alive?1:0]),bd:S.bodies.map(b=>[Math.round(b.x),Math.round(b.y),b.n,b.col,b.t,b.hat?1:0]),pr:S.prog,cd:S.cd,dn:hu.map(c=>c.done),hd:hu.map(c=>c.hold||0)})}
 function onSnap(p){
  if(!S||!NET||NET.host||!Array.isArray(p.ch))return;NET.lastSnap=performance.now();
  S.ch.forEach((c,i)=>{const s=p.ch[i];if(!s)return;c.gx=+s[0]||0;c.gy=+s[1]||0;c.alive=s[2]?1:0;if(Math.hypot(c.gx-c.x,c.gy-c.y)>150){c.x=c.gx;c.y=c.gy}});
  S.bodies=(Array.isArray(p.bd)?p.bd:[]).map(b=>({x:+b[0]||0,y:+b[1]||0,n:cleanName(b[2]),col:okCol(b[3]),t:(b[4]|0)%8,hat:!!b[5]}));
- S.prog=+p.pr||0;S.cd=+p.cd||0;if(Array.isArray(p.dn))S.ch[ME].done=p.dn.map(x=>x?1:0);S.hold=+p.hd||0}
+ S.prog=+p.pr||0;S.cd=+p.cd||0;if(Array.isArray(p.dn)&&Array.isArray(p.dn[ME]))S.ch[ME].done=p.dn[ME].map(x=>x?1:0);S.hold=Array.isArray(p.hd)?(+p.hd[ME]||0):0}
 function guestTick(dt){
  S.mt-=dt;
  const P=me(),li=localIn(),mvg=!S.meet&&P.alive&&(li.dx||li.dy);
@@ -316,7 +362,7 @@ function guestTick(dt){
   if(c===P&&mvg){if(d>60){const k=Math.min(1,dt*8);c.x+=(c.gx-c.x)*k;c.y+=(c.gy-c.y)*k}}
   else{const k=Math.min(1,dt*(c===P?6:14));c.x+=(c.gx-c.x)*k;c.y+=(c.gy-c.y)*k}});
  NET.acc+=dt;const i=localIn(),key=i.dx+','+i.dy+','+i.e;
- if(NET.acc>.05&&(S.meet?NET.acc>.5:(key!=NET.last||NET.acc>.25))){NET.acc=0;NET.last=key;send('in',S.meet?{dx:0,dy:0,e:0}:i)}
+ if(NET.acc>.05&&(S.meet?NET.acc>.5:(key!=NET.last||NET.acc>.25))){NET.acc=0;NET.last=key;send('in',Object.assign({id:NET.id},S.meet?{dx:0,dy:0,e:0}:i))}
  if(performance.now()-NET.lastSnap>12000&&!S.over&&!NET.lost){NET.lost=1;ov.style.display='block';ov.innerHTML='<h2>Conexão perdida</h2><p>O anfitrião não responde.</p><button onclick="backMenu()">Voltar ao menu</button>'}}
 function FOC(){const P=me();return P.alive?P:(S.ch.find(c=>c.p&&c.alive)||S.ch.find(c=>c.alive)||P)}
 function mon(c,dead){
@@ -359,7 +405,7 @@ function draw(){
  g.fillStyle='#fff';g.font='11px system-ui';g.fillText('Tarefas',220,19);
  g.fillText('Papel: '+RL[P.role]+(P.role=='k'?(S.cd>0?'  · recarga '+Math.ceil(S.cd)+'s':'  · pronto (Espaço)'):''),10,38);
  let h='';const hd=NET&&!NET.host?S.hold:(P.hold||0);if(hd>0){g.fillStyle='#ffd84d';g.fillRect(340,470,hd/1.5*120,8)}
- if(NET){g.textAlign='left';g.fillStyle='#9ad1f5';g.fillText(NET.host?'Online · sinal do amigo há '+(((performance.now()-NET.lastIn)/1000)|0)+'s':'Online · sinal do anfitrião há '+(((performance.now()-NET.lastSnap)/1000)|0)+'s',10,74)}
+ if(NET){g.textAlign='left';g.fillStyle='#9ad1f5';g.fillText(NET.host?'Online · '+(NET.n||1)+' jogadores · maior atraso de sinal '+((Math.max(0,...Object.values(NET.lastIn||{}).map(t=>performance.now()-t))/1000)|0)+'s':'Online · sinal do anfitrião há '+(((performance.now()-NET.lastSnap)/1000)|0)+'s',10,74)}
  if(!P.alive){g.textAlign='left';g.fillStyle='#ff6b6b';g.fillText('Você foi eliminado — assistindo como espectador',10,56)}
  if(nearB(P,60))h='R: reportar corpo'+(P.role=='d'?' · F: investigar':'');
  if(S.mt>0){g.fillStyle='#000b';g.fillRect(160,455,480,24);g.fillStyle='#fff';g.textAlign='center';g.fillText(S.msg,400,471)}
